@@ -13,3 +13,15 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
       - run: sh -n install.sh && sh scripts/build-release.sh
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check sh entry points and embedded Bash bodies
+        run: |
+          shellcheck -s sh install.sh scripts/build-release.sh
+          awk '/^set -o errexit/{body=1} /^RISU_INSTALL_BASH$/{body=0} body' install.sh > /tmp/install.bash
+          awk '/^set -o errexit/{body=1} /^RISU_BUILD_BASH$/{body=0} body' scripts/build-release.sh > /tmp/build.bash
+          shellcheck -s bash /tmp/install.bash /tmp/build.bash
+          bash -n /tmp/install.bash
+          bash -n /tmp/build.bash

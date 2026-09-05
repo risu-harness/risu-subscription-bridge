@@ -80,6 +80,12 @@ sh scripts/build-release.sh 0.2.0
 BRIDGE_SOURCE_BIN=/tmp/risu-bridge BRIDGE_INSTALL_DIR=/tmp/risu-go-install BRIDGE_INSTALL_ONLY=1 sh install.sh
 ```
 
+설치 스크립트는 [BASH3 Boilerplate(b3bp)](https://github.com/kvz/bash3boilerplate)의 규칙을 적용합니다. `sh` 진입점은 본문을 macOS 기본 `/bin/bash`에 전달하므로 기존 `curl … | sh` 명령과 Bash 3.2 호환성을 유지합니다. `errexit`, `errtrace`, `nounset`, `pipefail`, 함수별 지역 변수, 단계별 stderr 로그, 종료 신호·실패 시 정리를 사용합니다. b3bp 자체를 런타임 의존성으로 다운로드하지 않습니다.
+
+`sh install.sh --help`, `--install-only`, `--version`, `--restart`를 지원합니다. 잘못된 옵션은 설치 전에 거부합니다. `LOG_LEVEL=3`은 오류만, 기본 `6`은 진행 정보를 표시하며 `NO_COLOR=1`로 색상을 끌 수 있습니다. 내부 명령 전체나 환경 변수는 오류 로그에 출력하지 않습니다. 손상된 Codex 캐시는 다시 내려받아 검증하며 캐시와 실행 명령은 임시 파일에서 원자적으로 교체합니다. 실행 명령 교체 직전까지 실패한 설치 폴더를 정리하고, 교체가 시작된 이후에는 실행 파일이 사라지지 않도록 검증된 릴리스를 보존합니다.
+
+설치 테스트는 네트워크·실행 파일 fixture를 사용하여 파일/파이프 실행, 인자 전달, 공백·특수문자 경로, 데이터 보존, 캐시 복구, 다운로드/해시 오류와 종료 신호 처리를 검증합니다.
+
 설치 환경 변수: `BRIDGE_INSTALL_DIR`, `BRIDGE_INSTALL_ONLY=1`, `BRIDGE_FORCE_DOWNLOAD=1`, 개발 전용 `BRIDGE_SOURCE_BIN`.
 실행 환경 변수: `BRIDGE_DATA_DIR`, `BRIDGE_CODEX_BIN`, `BRIDGE_PORT`, `BRIDGE_OPEN_BROWSER=0`, `BRIDGE_ACTION=reuse|stop|restart`, `BRIDGE_ALLOWED_ORIGINS`(정확한 Origin을 쉼표로 구분; wildcard 미지원).
 
