@@ -33,6 +33,38 @@ curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-brid
 
 소스를 검토하고 로컬에서 설치하려면 `sh install.sh`. 개발 실행은 Node 22 이상에서 `npm start`이며 의존성 설치가 필요 없다. 아직 서명된 독립 바이너리 배포판은 아니며, 부트스트랩/Node/공식 Codex 조합이다.
 
+## 생성 방식 선택
+
+설치하면서 App Server로 전환 (기존 응답이 끝난 후 실행):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-bridge/main/install.sh | sh -s -- --adapter app-server --restart
+```
+
+설치된 버전에서 전환:
+
+```sh
+sh "$HOME/.local/share/risu-subscription-bridge/bin/risu-bridge" --adapter app-server --restart
+sh "$HOME/.local/share/risu-subscription-bridge/bin/risu-bridge" --adapter exec --restart
+```
+
+`--restart`는 실행 중인 응답을 중단하고 기존 포트에서 재시작한다. 로그인·로컬 키·Risu URL은 유지된다. 설정 페이지의 `adapter`와 `delivery`에서 적용을 확인한다. App Server 스트리밍을 보려면 Risu의 **Response 스트리밍**을 켠다.
+
+새 실행의 기본값은 `exec`. 플래그 없이 기존 인스턴스를 재시작하면 현재 방식을 유지한다. 다른 모드를 지정하고 재사용을 선택하면 전환되지 않았음을 오류로 알린다. `BRIDGE_ADAPTER=exec|app-server`도 지원하며 플래그가 우선한다. 개발 실행은 `npm start -- --adapter app-server` (실행 중인 개발 서버는 먼저 종료). `--help`로 도움말을 볼 수 있다.
+
+| 항목 | CLI (`exec`) | App Server (`app-server`) |
+|---|---|---|
+| 생성 프로세스 | 요청마다 새 exec | 브리지 수명 동안 하나를 재사용 |
+| 응답 전달 | 완성된 메시지 이벤트 | 생성 중 텍스트 델타를 SSE로 전달 |
+| 대화 상태 | `--ephemeral`, 매번 전체 기록 입력 | 요청마다 `ephemeral: true` 새 thread, 종료 후 unsubscribe |
+| 지연 | 매 요청 프로세스 초기화 | 생성 프로세스 재시작 비용을 피함. 실제 속도 차이는 측정 필요 |
+| 장애·취소 | 개별 프로세스 종료로 격리 | RPC interrupt/unsubscribe 관리 필요. 프로세스 사망 시 브리지 재시작 필요 |
+| 입력·요금 | JSON transcript, 기존 구독 한도 사용 | 동일. 네이티브 역할 의미나 무제한 사용을 보장하지 않음 |
+
+구독 해제 후 메모리에서 스레드가 제거되는 시점은 Codex 서버가 관리한다. 즉시 메모리 삭제를 보장하지 않으며, 정리 RPC 실패 시 서버를 종료하고 재시작을 요구한다.
+
+App Server에서도 Risu의 히스토리를 누적 thread에 재전송하지 않는다. 두 모드 모두 전용 Codex 저장 공간을 사용한다. 임시 thread는 디스크 대화 저장을 피하지만, 서버 기록이나 모든 Codex UI에서의 비노출을 보장하는 것은 아니다. CLI 데스크톱 연결 및 UI 이력 비노출은 사용자 확인을 받았으며, App Server UI 비노출은 별도 확인이 필요하다.
+
 ## Risu 설정
 
 1. 모델 공급자에서 Reverse Proxy 또는 OpenAI-compatible을 선택한다. 정확한 명칭은 Risu 버전에 따라 다를 수 있다.
@@ -42,14 +74,14 @@ curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-brid
 5. 도구 호출, JSON schema 출력, 복수 생성은 끈다. 첫 시험은 텍스트 카드로 한다. 이미지 태그/정규식 연출은 Risu가 계속 처리한다.
 6. 스트리밍을 켜고 한 턴 생성 → 중단 → 재생성 → 사용자 메시지 수정 후 재생성을 확인한다.
 
-브라우저의 Local Network Access 허용이 필요할 수 있다. Risu의 네트워크 라우팅은 **사용자 Mac에서 직접 localhost로 연결**해야 한다. 원격 프록시에 맡기면 원격 서버의 localhost를 가리킨다. 웹 Risu 연결이 막힐 경우 Mac 데스크톱 Risu 또는 로컬 Risu에서 시험한다. CORS 헤더만으로 모든 브라우저 보안 제한을 해결하지는 못한다.
+공식 Risu 웹 버전은 로컬 URL을 자체 차단하므로 현재 Mac 검증은 **Risu 데스크톱**으로 진행한다. Risu의 네트워크 라우팅은 **사용자 Mac에서 직접 localhost로 연결**해야 한다. 원격 프록시에 맡기면 원격 서버의 localhost를 가리킨다. 웹 Risu 연결이 막힐 경우 Mac 데스크톱 Risu 또는 로컬 Risu에서 시험한다. CORS 헤더만으로 모든 브라우저 보안 제한을 해결하지는 못한다.
 
 기본 허용 Origin은 `https://risuai.xyz`, `https://risuai.net`, 데스크톱 Tauri의 `tauri://localhost`·`http://tauri.localhost`와 브리지 자체 Origin이다. 로컬 Risu 등은 `BRIDGE_ALLOWED_ORIGINS`에 쉼표로 명시한다. `*` 허용은 하지 않는다.
 
 ## 구현 범위와 차이
 
 - `GET /healthz`, `GET /v1/models`, `POST /v1/chat/completions` (JSON/SSE), 로그인·상태 페이지.
-- Risu가 전체 기록의 소유자다. CLI는 요청마다 subprocess를 생성하고 종료한다. 비교용 App Server 모드는 매 요청 새 ephemeral thread를 사용하고 종료 후 unload한다. 두 방식 모두 재생성/편집/분기에서 이전 Codex 답변이 자동 누적되지 않는다.
+- Risu가 전체 기록의 소유자다. CLI는 요청마다 subprocess를 생성하고 종료한다. 비교용 App Server 모드는 매 요청 새 ephemeral thread를 사용하고 종료 후 unsubscribe한다. 두 방식 모두 재생성/편집/분기에서 이전 Codex 답변이 자동 누적되지 않는다.
 - 원래 역할별 messages를 순서대로 JSON transcript로 전달한다. Codex의 네이티브 system/user/assistant 입력과 완전한 동등성을 주장하지 않는다. 동적 로어의 위치와 텍스트를 보존한다.
 - **temperature/top_p/top_k/min_p/penalties/logit_bias/seed/max_tokens/max_completion_tokens는 적용하지 못한다.** SSE 응답 헤더 및 상태 진단/JSON 확장 필드에 무시된 항목을 표시한다. 특히 max_tokens를 엄격한 출력 상한으로 믿으면 안 된다.
 - stop 문자열은 델타 경계를 포함해 처리하며, 감지되면 Codex interrupt로 연결한다.
@@ -74,6 +106,12 @@ npm run compare
 ```
 
 test는 비용 없는 가짜 어댑터로 HTTP/SSE, stop, 취소, 입력 검증, 실패, 접근 제한, 편집·동시성 계약을 검사한다. probe는 **실제 구독 한도를 사용**하여 짧은 RP 한 턴을 실행하며 로그인 전에는 종료 코드 2를 반환한다. compare는 동일 입력으로 App Server와 codex exec를 각각 한 번 호출한다(총 2회). `npm run compare -- /absolute/request.json`으로 Risu에서 내보낸 요청을 비교할 수 있다. CLI의 firstMessageMs는 완성 메시지 이벤트까지 시간이며 진정한 첫 토큰 시간과 다를 수 있다. 실제 Risu의 50~100턴은 별도의 P2 검증 항목이며 이 테스트로 완료 처리하지 않는다.
+
+### App Server 실제 검증 (2026-09-04)
+
+설치된 Codex 0.153.0과 브리지 전용 ChatGPT 로그인으로 짧은 인사 두 건을 시험했다. 수정 후 각 응답은 7개 텍스트 델타로 전달됐고, 첫 델타는 약 3.15초/3.81초, 완료는 약 3.40초/4.06초였다. 이는 짧은 입력의 관측값이며 CLI 대비 속도나 긴 캐릭터 대화 성능을 입증하는 벤치마크는 아니다.
+
+각 요청의 thread ID가 서로 다르고 `ephemeral: true`이며 `thread/unsubscribe`가 성공했음을 확인했다. 시험 thread는 `thread/list`에 나타나지 않았지만, 직후 `thread/loaded/list`에는 두 건이 남아 있었다. 메모리 해제는 서버가 관리한다. 실제 Codex UI의 비노출은 별도 확인 항목이다. 이전 비교 코드의 지원되지 않는 `thread/unload` 호출은 제거했다.
 
 ## 다음 단계
 

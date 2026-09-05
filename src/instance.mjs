@@ -23,7 +23,7 @@ export async function findInstance(runtime, ports) {
       });
       if (!response.ok) return null;
       const status = await response.json();
-      return resolve(status.runtime || '/') === resolve(runtime) ? {port, token} : null;
+      return resolve(status.runtime || '/') === resolve(runtime) ? {port, token, adapter: status.adapter} : null;
     } catch { return null; }
   }));
   return results.find(Boolean) ?? null;

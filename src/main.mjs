@@ -9,6 +9,10 @@ import {spawn} from 'node:child_process';
 import {createBridge} from './server.mjs';
 import {acquireInstance} from './instance.mjs';
 
+import {parseOptions,helpText} from './options.mjs';
+const options = parseOptions(process.argv.slice(2));
+if (options.help) { console.log(helpText); process.exit(0); }
+const backend = options.adapter || 'exec';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const runtime = resolve(process.env.BRIDGE_DATA_DIR || join(root, '.runtime'));
 let instanceGuard;
@@ -28,8 +32,6 @@ const env = {...process.env, CODEX_HOME: home};
 for (const k of ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORG_ID', 'OPENAI_ORGANIZATION', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete env[k];
 const control = new Codex({binary, env, cwd});
 await control.init();
-const backend = process.env.BRIDGE_ADAPTER || 'exec';
-if (!['exec', 'app-server'].includes(backend)) { control.shutdown(); throw Error('BRIDGE_ADAPTER must be exec or app-server'); }
 const adapter = backend === 'exec' ? new CodexExec({binary, env, cwd, control}) : control;
 if (backend === 'exec') await adapter.init();
 const port = Number(process.env.BRIDGE_PORT || 8787);

@@ -82,4 +82,4 @@ await rename(launcherTemp,join(dir,'bin','risu-bridge'));
 JS
 printf '\n준비 완료. 다음에도 같은 curl 명령을 사용하세요. 실행 중이면 재사용·종료·재시작을 선택합니다.\n'
 if [ "${BRIDGE_INSTALL_ONLY:-0}" = 1 ]; then exit 0; fi
-exec sh "$install_dir/bin/risu-bridge"
+exec sh "$install_dir/bin/risu-bridge" "$@"

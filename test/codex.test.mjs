@@ -14,7 +14,7 @@ class FakeCodex extends Codex {
   }
   event(method,params){this.emit('notification',{method,params:{threadId:'thread1',...params}});}
 }
-test('handles notifications before turn/start reply, ignores other threads and reasoning, unloads ephemeral thread',async()=>{
+test('handles notifications before turn/start reply, ignores other threads and reasoning, unsubscribes ephemeral thread',async()=>{
   let text='';const a=new FakeCodex(async a=>{
     a.emit('notification',{method:'item/agentMessage/delta',params:{threadId:'other',delta:'wrong'}});
     a.event('item/reasoning/textDelta',{delta:'private'});
@@ -24,7 +24,7 @@ test('handles notifications before turn/start reply, ignores other threads and r
   });
   const r=await a.generate(request,{signal:new AbortController().signal,delta:s=>text+=s});
   assert.equal(text,'hello');assert.equal(r.usage.total_tokens,7);
-  assert.equal(a.calls[0].params.ephemeral,true);assert.equal(a.calls.at(-1).method,'thread/unload');
+  assert.equal(a.calls[0].params.ephemeral,true);assert.equal(a.calls.at(-1).method,'thread/unsubscribe');
   assert.equal(a.listenerCount('notification'),0);
 });
 test('abort before turn/start response still interrupts and cleans up',async()=>{
@@ -35,4 +35,32 @@ test('abort before turn/start response still interrupts and cleans up',async()=>
 test('harness death rejects generation instead of leaving a pending HTTP request',async()=>{
   const a=new FakeCodex(async a=>{a.emit('stopped');});
   await assert.rejects(a.generate(request,{signal:new AbortController().signal,delta:()=>{}}),e=>e.code==='harness_stopped');
+});
+test('streams before completion and creates a fresh ephemeral thread for each edited history',async()=>{
+  let completed=false;const delivered=[];
+  const a=new FakeCodex(async a=>{
+    completed=false;
+    a.event('item/agentMessage/delta',{delta:'one'});
+    a.event('item/agentMessage/delta',{delta:'two'});
+    completed=true;
+    a.event('turn/completed',{turn:{id:'turn1',status:'completed'}});
+  });
+  const options={signal:new AbortController().signal,delta:s=>{assert.equal(completed,false);delivered.push(s);}};
+  await a.generate(request,options);
+  await a.generate({...request,messages:[{role:'user',content:'Edited message'}]},options);
+  assert.deepEqual(delivered,['one','two','one','two']);
+  const starts=a.calls.filter(c=>c.method==='thread/start');
+  assert.equal(starts.length,2);assert.ok(starts.every(c=>c.params.ephemeral===true));
+  assert.equal(a.calls.filter(c=>c.method==='thread/unsubscribe').length,2);
+  const turns=a.calls.filter(c=>c.method==='turn/start');
+  assert.match(turns[1].params.input[0].text,/Edited message/);
+  assert.doesNotMatch(turns[1].params.input[0].text,/Hi/);
+});
+test('cleanup RPC failure stops harness rather than silently accumulating threads',async()=>{
+  const a=new FakeCodex(async a=>a.event('turn/completed',{turn:{id:'turn1',status:'completed'}}));
+  const rpc=a.rpc.bind(a);let shutdown=false;
+  a.rpc=(method,params)=>method==='thread/unsubscribe'?Promise.reject(Error('RPC failed')):rpc(method,params);
+  a.shutdown=()=>shutdown=true;
+  await assert.rejects(a.generate(request,{signal:new AbortController().signal,delta:()=>{}}),e=>e.code==='cleanup_failed');
+  assert.equal(shutdown,true);
 });

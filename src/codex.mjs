@@ -4,6 +4,8 @@ import {EventEmitter} from 'node:events';
 import {BridgeError, BASE, promptFor} from './protocol.mjs';
 
 export class Codex extends EventEmitter {
+  name = 'app-server';
+  delivery = 'token-delta';
   constructor({binary, env, cwd}) { super(); Object.assign(this, {binary, env, cwd}); this.pending = new Map(); this.seq = 0; }
   async init() {
     this.child = spawn(this.binary, ['app-server', '--listen', 'stdio://'], {env: this.env, cwd: this.cwd, stdio: ['pipe', 'pipe', 'pipe']});
@@ -50,6 +52,7 @@ export class Codex extends EventEmitter {
     return models;
   }
   async generate(request, {signal, delta}) {
+    const startedAt = performance.now();
     if (signal.aborted) throw new BridgeError('Cancelled.', 499, 'cancelled');
     const account = await this.account();
     if (!account.connected) throw new BridgeError('Sign in with ChatGPT on the local setup page. API-key accounts are not accepted.', 401, 'login_required');
@@ -58,7 +61,7 @@ export class Codex extends EventEmitter {
     if (!chosen) throw new BridgeError('Choose a model returned by /v1/models.', 400, 'unknown_model');
     const model = chosen.model ?? chosen.id;
     const {thread} = await this.rpc('thread/start', {model, cwd: this.cwd, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', baseInstructions: BASE});
-    let turnId, timer, usage, settled = false, startedAt = performance.now(), firstTokenMs = null;
+    let turnId, timer, usage, settled = false, firstTokenMs = null;
     let resolveDone, rejectDone;
     const done = new Promise((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
     // Attach a rejection handler immediately while turn/start is still in flight.
@@ -96,7 +99,13 @@ export class Codex extends EventEmitter {
       return {model, usage, firstTokenMs, elapsedMs: Math.round(performance.now() - startedAt)};
     } finally {
       clearTimeout(timer); this.off('notification', listen); this.off('stopped', stopped); signal.removeEventListener('abort', abort);
-      await this.rpc('thread/unload', {threadId: thread.id}, 5000).catch(() => {});
+      // Codex 0.153.0 exposes unsubscribe, not thread/unload. The server owns
+      // the subsequent in-memory eviction; never reuse this thread.
+      try { await this.rpc('thread/unsubscribe', {threadId: thread.id}, 5000); }
+      catch {
+        this.shutdown();
+        throw new BridgeError('Thread cleanup failed. Restart the bridge.', 503, 'cleanup_failed');
+      }
     }
   }
   shutdown() { this.child?.stdin.end(); const child = this.child; const t = setTimeout(() => child?.kill('SIGTERM'), 1500); t.unref(); }
