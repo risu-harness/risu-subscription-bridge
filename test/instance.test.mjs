@@ -31,7 +31,7 @@ test('parallel launchers reuse authenticated runtime without spawning harness',a
  const server=http.createServer((req,res)=>{
  res.setHeader('Content-Type','application/json');
  if(req.headers.authorization!=='Bearer test-key'){res.writeHead(401);res.end('{}');return;}
- res.end(JSON.stringify({runtime:wrongRuntime?'/different':runtime,adapter:'exec'}));
+ res.end(JSON.stringify({runtime:wrongRuntime?'/different':runtime,adapter:'app-server'}));
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
  try {assert.equal((await findInstance(runtime,[port])).port,port);
@@ -39,8 +39,6 @@ test('parallel launchers reuse authenticated runtime without spawning harness',a
  const launch=new URL('../scripts/launch.mjs',import.meta.url);
  const children=Array.from({length:3},()=>spawn(process.execPath,[launch.pathname,dir],{env:{...process.env,BRIDGE_PORT:String(port),BRIDGE_OPEN_BROWSER:'0',BRIDGE_ACTION:'reuse'},stdio:'ignore'}));
  const codes=await Promise.all(children.map(c=>once(c,'exit')));assert.ok(codes.every(([code])=>code===0));
- const mismatch=spawn(process.execPath,[launch.pathname,dir,'--adapter','app-server'],{env:{...process.env,BRIDGE_PORT:String(port),BRIDGE_OPEN_BROWSER:'0',BRIDGE_ACTION:'reuse'},stdio:'ignore'});
- assert.notEqual((await once(mismatch,'exit'))[0],0);
  wrongRuntime=true;assert.equal(await findInstance(runtime,[port]),null);
  wrongRuntime=false;await writeFile(join(runtime,'bridge-key'),'wrong');assert.equal(await findInstance(runtime,[port]),null);
  }finally{await new Promise(r=>server.close(r));await rm(dir,{recursive:true});}
@@ -58,18 +56,4 @@ test('stop route requires local origin and token, and releases listener',async()
   assert.equal(stopped,false);
   await stopInstance({port,token:'secret'},'/unused');assert.equal(stopped,true);
  }finally{server.close();server.closeAllConnections();}
-});
-test('launcher passes selected backend into the child rather than forcing exec',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'risu-backend-'));
- await mkdir(join(dir,'src'));
- await writeFile(join(dir,'src/main.mjs'),"console.log('SELECTED='+process.env.BRIDGE_ADAPTER);");
- await writeFile(join(dir,'install.json'),JSON.stringify({node:process.execPath,source:dir,codex:'/unused'}));
- try {
-  for(const adapter of ['exec','app-server']){
-   const child=spawn(process.execPath,[new URL('../scripts/launch.mjs',import.meta.url).pathname,dir,'--adapter',adapter],{env:{...process.env,BRIDGE_PORT:'19878',BRIDGE_OPEN_BROWSER:'0',BRIDGE_ADAPTER:'exec'},stdio:['ignore','pipe','pipe']});
-   let output='';child.stdout.on('data',s=>output+=s);child.stderr.on('data',s=>output+=s);
-   assert.equal((await once(child,'exit'))[0],0,output);
-   assert.ok(output.includes(`SELECTED=${adapter}`),output);
-  }
- }finally{await rm(dir,{recursive:true});}
 });

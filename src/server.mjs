@@ -42,7 +42,7 @@ export function createBridge({adapter, token, port = 8787, origins = ['https://r
       if (req.method === 'GET' && path === '/healthz') return json(200, {ok: Boolean(adapter.alive), version: '0.1.0'});
       if (!equal(req.headers.authorization, `Bearer ${token}`)) throw new BridgeError('Local bridge key required.', 401, 'unauthorized');
       if (path.startsWith('/internal/') && origin && !local.includes(origin)) throw new BridgeError('Setup must be opened locally.', 403, 'setup_origin');
-      if (req.method === 'GET' && path === '/internal/status') return json(200, {account: await adapter.account(), metrics, busy, runtime, adapter: adapter.name ?? 'app-server', delivery: adapter.delivery ?? 'token-delta', mode: 'Risu owns history; fresh ephemeral generation per request', controlPlane: 'App Server for login/account/models only when using exec'});
+      if (req.method === 'GET' && path === '/internal/status') return json(200, {account: await adapter.account(), metrics, busy, runtime, adapter: adapter.name ?? 'app-server', delivery: adapter.delivery ?? 'token-delta', mode: 'Risu owns history; fresh ephemeral generation per request', controlPlane: 'App Server for login, models and generation'});
       if (req.method === 'GET' && path === '/internal/settings' && settings) return json(200,{settings:settings.value,models:await adapter.models()});
       if (req.method === 'POST' && path === '/internal/settings' && settings) {
         if(busy)throw new BridgeError('응답이 끝난 뒤 설정을 저장하세요.',409,'bridge_busy');

@@ -20,13 +20,13 @@ function efforts(value='') {
 async function loadSettings() {
  const r=await call('/internal/settings');catalog=r.models;
  $('models').replaceChildren(new Option('Codex 기본 모델','subscription-default'),...catalog.map(m=>new Option(m.displayName||m.model||m.id,m.model||m.id)));
- for(const key of ['backend','models','verbosity','instructions'])$(key).value=r.settings[key==='models'?'model':key];
+ for(const key of ['models','verbosity','instructions'])$(key).value=r.settings[key==='models'?'model':key];
  efforts(r.settings.effort);settingsLoaded=true;
 }
 $('models').onchange=()=>efforts();
 $('save-settings').onclick=async()=>{
  $('save-settings').disabled=true;
- try {await call('/internal/settings',{method:'POST',body:JSON.stringify({backend:$('backend').value,model:$('models').value,effort:$('effort').value,verbosity:$('verbosity').value,instructions:$('instructions').value})});$('saved').textContent='저장됨 · 다음 요청부터 적용';await refresh();}
+ try {await call('/internal/settings',{method:'POST',body:JSON.stringify({model:$('models').value,effort:$('effort').value,verbosity:$('verbosity').value,instructions:$('instructions').value})});$('saved').textContent='저장됨 · 다음 요청부터 적용';await refresh();}
  catch(e){$('error').textContent=e.message;$('saved').textContent='저장하지 못했습니다.';}
  finally{$('save-settings').disabled=false;}
 };
@@ -34,7 +34,7 @@ async function refresh() {
   try {
     sessionStorage.setItem('bridge-key', $('token').value);
     const s = await call('/internal/status');
-    $('delivery').textContent = s.adapter === 'codex-exec' ? 'CLI wrapper · 요청마다 독립 실행. 답변이 완성되면 표시됩니다(토큰 실시간 스트리밍 아님).' : 'App Server · 생성 중 텍스트를 순차 표시합니다.';
+    $('delivery').textContent = 'App Server · 생성 중 텍스트를 순차 표시합니다.';
     $('status').textContent = s.account.connected ? '● ChatGPT 연결됨 · ' + (s.account.plan || '구독') : '○ ChatGPT 로그인이 필요합니다';
     $('diagnostics').textContent = JSON.stringify(s, null, 2); $('error').textContent = '';
     if (s.account.connected && !settingsLoaded) await loadSettings();
