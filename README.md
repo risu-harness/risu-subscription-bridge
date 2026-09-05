@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-brid
 
 설치 위치는 `~/.local/share/risu-subscription-bridge`다. `releases/`는 설치별 소스, `data/`는 인증·로컬 상태, `bin/risu-bridge`는 실행 명령이다. 재설치해도 data는 보존한다. 사용 중인 브리지를 자동 종료하거나 설정을 바꾸지 않으며, 시작할 때 8787~8799 중 사용 가능한 포트를 선택한다. Risu에 설정 페이지의 실제 포트를 넣어야 한다.
 
-**처음 설치할 때나 다시 실행할 때나 위의 curl 명령 하나를 사용한다.** 실행 중인 동일 설치의 브리지가 있으면 로컬 키와 데이터 경로를 확인하고 기존 포트의 설정 페이지를 연다. 없다면 시작한다. 새 소스는 다음 프로세스 시작부터 적용되며 실행 중인 대화는 중단하지 않는다.
+**처음 설치할 때나 다시 실행할 때나 위의 curl 명령 하나를 사용한다.** 실행 중인 동일 설치의 브리지가 있으면 로컬 키와 데이터 경로를 확인하고 터미널에서 **1) 재사용 / 2) 종료만 / 3) 종료 후 최신 버전으로 재시작**을 묻는다. Enter는 재사용이다. 재시작은 기존 포트를 유지한다. 종료·재시작은 진행 중인 응답을 중단한다. 키는 `data/bridge-key`에서 자동으로 읽으므로 사용자가 기억할 필요가 없다. 없다면 시작한다. 새 소스는 다음 프로세스 시작부터 적용되며 실행 중인 대화는 중단하지 않는다.
 
 동시 실행은 브리지 프로세스가 소유한 OS 잠금으로 제한한다. 비정상 종료 시 잠금은 OS가 해제한다. 다른 설치 폴더는 독립 인스턴스로 취급한다. 포트가 다른 프로그램에 사용 중일 때만 첫 시작 포트를 바꾼다.
 
@@ -82,3 +82,5 @@ P0: 실제 Risu request/응답 확인 및 App Server 한 턴 → 동일 payload�
 환경 변수: `BRIDGE_ADAPTER`(exec 또는 app-server, 기본 exec), `BRIDGE_PORT`(8787), `BRIDGE_CODEX_BIN`, `BRIDGE_DATA_DIR`, `BRIDGE_ALLOWED_ORIGINS`.
 
 출처: [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [exec events](https://github.com/openai/codex/blob/main/codex-rs/exec/src/exec_events.rs), [exec JSONL 변환](https://github.com/openai/codex/blob/main/codex-rs/exec/src/event_processor_with_jsonl_output.rs), [App Server](https://learn.chatgpt.com/docs/app-server), [Risu OpenAI request source](https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/request/openAI/requests.ts). 로컬 설치된 Codex 0.153.0의 help와 generate-json-schema를 함께 확인했다.
+
+파이프 설치에서도 `/dev/tty`로 선택을 읽는다. 터미널이 없는 자동 실행은 재사용이 기본이다. 자동화에서는 `BRIDGE_ACTION=reuse|stop|restart`를 지정할 수 있다. 구버전 종료 API가 없는 Mac 브리지는 인증 확인 후 해당 설치 releases 폴더에서 실행한 리스너만 SIGTERM으로 종료한다.

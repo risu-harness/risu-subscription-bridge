@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
-import net from 'node:net';
+import {chooseAction,stopInstance,available} from './lifecycle.mjs';
 import {spawn} from 'node:child_process';
 import {findInstance} from '../src/instance.mjs';
 const dir=process.argv[2];
@@ -19,10 +19,21 @@ async function reuse() {
   }
   return true;
 }
-async function available(port){return new Promise(resolve=>{const s=net.createServer();s.once('error',()=>resolve(false));s.listen(port,'127.0.0.1',()=>s.close(()=>resolve(true)));});}
-if(!await reuse()) {
-  let port=requested;
-  if(process.env.BRIDGE_PORT){if(!await available(port))throw Error(`Port ${port} is already in use.`);}
+const existing=await findInstance(runtime,ports);
+let start=!existing;
+let port=requested;
+if(existing) {
+  console.log(`실행 중인 브리지: http://127.0.0.1:${existing.port}/`);
+  const action=await chooseAction();
+  if(action==='reuse')await reuse();
+  else {
+    await stopInstance(existing,dir);
+    console.log('브리지를 종료했습니다.');
+    start=action==='restart';port=existing.port;
+  }
+}
+if(start) {
+  if(existing||process.env.BRIDGE_PORT){if(!await available(port))throw Error(`Port ${port} is already in use.`);}
   else {while(port<8800&&!await available(port))port++;if(port===8800)throw Error('No available port from 8787 to 8799.');}
   console.log(`브리지 시작 · http://127.0.0.1:${port} · CLI wrapper`);
   const child=spawn(cfg.node,[join(cfg.source,'src','main.mjs')],{cwd:cfg.source,stdio:'inherit',env:{...process.env,BRIDGE_CODEX_BIN:cfg.codex,BRIDGE_DATA_DIR:runtime,BRIDGE_PORT:String(port),BRIDGE_ADAPTER:'exec',BRIDGE_OPEN_BROWSER:process.env.BRIDGE_OPEN_BROWSER??'1'}});

@@ -13,7 +13,7 @@ async function readJSON(req) {
   try { return JSON.parse(Buffer.concat(parts).toString('utf8')); } catch { throw new BridgeError('Invalid JSON.', 400, 'invalid_json'); }
 }
 
-export function createBridge({adapter, token, port = 8787, origins = ['https://risuai.xyz', 'https://risuai.net', 'tauri://localhost', 'http://tauri.localhost'], runtime = ''}) {
+export function createBridge({adapter, token, port = 8787, origins = ['https://risuai.xyz', 'https://risuai.net', 'tauri://localhost', 'http://tauri.localhost'], runtime = '', shutdown}) {
   const metrics = {requests: 0, completed: 0, cancelled: 0, failed: 0, last: null};
   let busy = false;
   const server = http.createServer(async (req, res) => {
@@ -43,6 +43,7 @@ export function createBridge({adapter, token, port = 8787, origins = ['https://r
       if (!equal(req.headers.authorization, `Bearer ${token}`)) throw new BridgeError('Local bridge key required.', 401, 'unauthorized');
       if (path.startsWith('/internal/') && origin && !local.includes(origin)) throw new BridgeError('Setup must be opened locally.', 403, 'setup_origin');
       if (req.method === 'GET' && path === '/internal/status') return json(200, {account: await adapter.account(), metrics, busy, runtime, adapter: adapter.name ?? 'app-server', delivery: adapter.delivery ?? 'token-delta', mode: 'Risu owns history; fresh ephemeral generation per request', controlPlane: 'App Server for login/account/models only when using exec'});
+      if (req.method === 'POST' && path === '/internal/stop' && shutdown) { await readJSON(req); json(200, {ok: true}); setImmediate(shutdown); return; }
       if (req.method === 'POST' && path === '/internal/login') { await readJSON(req); return json(200, await adapter.login()); }
       if (req.method === 'GET' && path === '/v1/models') {
         const models = await adapter.models();

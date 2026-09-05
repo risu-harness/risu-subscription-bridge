@@ -37,9 +37,23 @@ test('parallel launchers reuse authenticated runtime without spawning harness',a
  try {assert.equal((await findInstance(runtime,[port])).port,port);
  await writeFile(join(dir,'install.json'),JSON.stringify({node:'/nonexistent',source:'/nonexistent',codex:'/nonexistent'}));
  const launch=new URL('../scripts/launch.mjs',import.meta.url);
- const children=Array.from({length:3},()=>spawn(process.execPath,[launch.pathname,dir],{env:{...process.env,BRIDGE_PORT:String(port),BRIDGE_OPEN_BROWSER:'0'},stdio:'ignore'}));
+ const children=Array.from({length:3},()=>spawn(process.execPath,[launch.pathname,dir],{env:{...process.env,BRIDGE_PORT:String(port),BRIDGE_OPEN_BROWSER:'0',BRIDGE_ACTION:'reuse'},stdio:'ignore'}));
  const codes=await Promise.all(children.map(c=>once(c,'exit')));assert.ok(codes.every(([code])=>code===0));
  wrongRuntime=true;assert.equal(await findInstance(runtime,[port]),null);
  wrongRuntime=false;await writeFile(join(runtime,'bridge-key'),'wrong');assert.equal(await findInstance(runtime,[port]),null);
  }finally{await new Promise(r=>server.close(r));await rm(dir,{recursive:true});}
+});
+test('stop route requires local origin and token, and releases listener',async()=>{
+ const {createBridge}=await import('../src/server.mjs');
+ const {stopInstance}=await import('../scripts/lifecycle.mjs');
+ let stopped=false;
+ const server=createBridge({adapter:{alive:true},token:'secret',shutdown:()=>{stopped=true;server.close();server.closeAllConnections();}});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
+ const url=`http://127.0.0.1:${port}/internal/stop`;
+ try {
+  assert.equal((await fetch(url,{method:'POST'})).status,401);
+  assert.equal((await fetch(url,{method:'POST',headers:{Authorization:'Bearer secret',Origin:'https://risuai.xyz'}})).status,403);
+  assert.equal(stopped,false);
+  await stopInstance({port,token:'secret'},'/unused');assert.equal(stopped,true);
+ }finally{server.close();server.closeAllConnections();}
 });
