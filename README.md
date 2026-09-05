@@ -13,14 +13,27 @@
 
 ## 시작
 
-Node.js 22 이상과 Codex가 필요하다. 이 Mac에서는 `/Applications/ChatGPT.app/Contents/Resources/codex` 0.153.0을 사용한다. PATH의 Homebrew Codex 0.104.0은 실행 시 137로 종료되어 사용하지 않았다.
+Mac 터미널에서 한 줄 실행:
 
 ```sh
-cd /Users/soo/Documents/ChatGPT/risu/bridge
-npm start
+curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-bridge/main/install.sh | sh
 ```
 
-의존성 설치는 없다. 출력된 Setup URL을 열고 **ChatGPT 로그인 → 공식 로그인 링크**로 로그인한다. 기본 Codex의 인증을 복사하지 않으며, 브리지 전용 로그인이 필요하다. 로그인 후 ‘상태 확인’과 ‘구독으로 테스트’를 실행한다.
+설치 후 연결 키가 포함된 설정 페이지가 기본 브라우저에서 열린다. **ChatGPT 로그인 → 공식 로그인 링크**로 로그인하고 ‘상태 확인’과 ‘구독으로 테스트’를 실행한다. 기본 Codex의 인증을 복사하지 않으며, 브리지 전용 로그인이 필요하다. 터미널은 켜 두고, 종료는 Ctrl+C로 한다.
+
+설치는 관리자 권한, Homebrew, Git, GitHub CLI를 요구하지 않는다. Node 22 이상과 Codex 0.153.0이 있으면 재사용한다. 없으면 Node 22.23.2의 공식 macOS 아카이브를 고정 SHA-256으로 검증해 설치하고, 공식 npm 레지스트리에서 Codex 0.153.0을 설치한다(npm package integrity 검증, lifecycle scripts 비활성). 전역 npm/셸 설정을 변경하지 않는다. Apple Silicon/Intel 분기를 제공하며 실제 실행 검증은 Apple Silicon에서 진행했다.
+
+설치 위치는 `~/.local/share/risu-subscription-bridge`다. `releases/`는 설치별 소스, `data/`는 인증·로컬 상태, `bin/risu-bridge`는 실행 명령이다. 재설치해도 data는 보존한다. 사용 중인 브리지를 자동 종료하거나 설정을 바꾸지 않으며, 시작할 때 8787~8799 중 사용 가능한 포트를 선택한다. Risu에 설정 페이지의 실제 포트를 넣어야 한다.
+
+다음 실행:
+
+```sh
+sh "$HOME/.local/share/risu-subscription-bridge/bin/risu-bridge"
+```
+
+설치만 하려면 `BRIDGE_INSTALL_ONLY=1`, 별도 위치는 `BRIDGE_INSTALL_DIR=/absolute/path`, 다운로드 경로 시험은 `BRIDGE_FORCE_DOWNLOAD=1`, 브라우저 자동 열기 제외는 `BRIDGE_OPEN_BROWSER=0`을 설치 실행의 환경 변수로 전달한다. 실행 중인 프로세스를 Ctrl+C로 종료한 후 설치 폴더를 Finder에서 휴지통으로 옮기면 제거된다(인증·상태도 함께 삭제되므로 필요한 자료는 먼저 보관).
+
+소스를 검토하고 로컬에서 설치하려면 `sh install.sh`. 개발 실행은 Node 22 이상에서 `npm start`이며 의존성 설치가 필요 없다. 아직 서명된 독립 바이너리 배포판은 아니며, 부트스트랩/Node/공식 Codex 조합이다.
 
 ## Risu 설정
 
@@ -66,7 +79,7 @@ test는 비용 없는 가짜 어댑터로 HTTP/SSE, stop, 취소, 입력 검증,
 
 ## 다음 단계
 
-P0: 실제 Risu request/응답 확인 및 App Server 한 턴 → 동일 payload의 codex exec 비교. P1/P2: 실제 50~100턴, 모델 품질·TTFT·취소·재시작. P3: 검증된 protocol adapter를 Go/Rust 단일 바이너리로 포팅할지 결정하고 macOS/Windows 설치·서명·공급자 사용 범위를 검토한다. Node 버전은 로컬 검증용이며 원라인 설치 제품이 아니다.
+P0: 실제 Risu request/응답 확인 및 App Server 한 턴 → 동일 payload의 codex exec 비교. P1/P2: 실제 50~100턴, 모델 품질·TTFT·취소·재시작. P3: Go/Rust 단일 바이너리 포팅 여부, Windows 설치·서명·공급자 사용 범위를 검토한다. 현재 macOS 한 줄 설치는 개념 검증용이다.
 
 환경 변수: `BRIDGE_ADAPTER`(exec 또는 app-server, 기본 exec), `BRIDGE_PORT`(8787), `BRIDGE_CODEX_BIN`, `BRIDGE_DATA_DIR`, `BRIDGE_ALLOWED_ORIGINS`.
 
