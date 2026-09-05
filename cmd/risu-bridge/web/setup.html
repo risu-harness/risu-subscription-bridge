@@ -1,8 +1,59 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Risu Subscription Bridge</title>
-<style>body{font:16px/1.7 system-ui;background:#f5f6f9;color:#172238;margin:0}main{max-width:720px;margin:60px auto;padding:32px;background:white;border:1px solid #e0e5ef;border-radius:18px}h1{font-size:28px;margin:0}small{color:#637087}section{margin-top:24px;border-top:1px solid #e6e9ef;padding-top:20px}input,select,button,textarea{font:inherit;padding:10px;border:1px solid #cbd2df;border-radius:7px;max-width:100%}textarea{box-sizing:border-box;width:100%}input{box-sizing:border-box;width:100%}button{cursor:pointer;background:#315bdb;color:white;margin:8px 6px 0 0}label{display:block;margin-top:12px}code{overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f4f6fa;padding:15px;border-radius:8px}#error{color:#a12929}a{color:#315bdb}@media(max-width:760px){main{margin:16px;padding:22px}}</style>
-<main><small>MAC LOCAL · CONCEPT VALIDATION</small><h1>Risu Subscription Bridge</h1><p>기존 Risu 화면에서 ChatGPT 구독으로 대화하세요.</p><p id="status">연결 상태 확인 중…</p><p id="error" role="alert"></p>
-<label>로컬 연결 키<input id="token" type="password" autocomplete="off"></label><button id="refresh">상태 확인</button><button id="login">ChatGPT 로그인</button><p><a id="auth" hidden target="_blank" rel="noopener noreferrer">공식 ChatGPT 로그인 페이지 열기</a></p>
-<section><b>Risu 연결 설정</b><label>요청 주소<input id="endpoint" readonly></label><button id="copy-endpoint">주소 복사</button><button id="copy-key">로컬 키 복사</button><p>Risu의 요청 모델을 <code>subscription-default</code>로 지정하면 아래 저장한 모델을 사용합니다. Risu에서 특정 모델을 지정하면 그 모델이 우선합니다.</p><small>이 키는 OpenAI API 키가 아닙니다. 웹 Risu는 브라우저의 로컬 네트워크 접근 허용이 필요할 수 있습니다. 연결이 막히면 Mac용 Risu 또는 로컬 Risu에서 확인하세요.</small></section>
-<section><b>대화 생성 설정</b><p>App Server · 생성 중 텍스트를 순차 표시합니다.</p><label>기본 모델<select id="models"><option>subscription-default</option></select></label><label>추론 강도<select id="effort"><option value="">모델 기본값</option></select></label><label>답변 상세도<select id="verbosity"><option value="">모델 기본값</option><option value="low">간결하게</option><option value="medium">보통</option><option value="high">상세하게</option></select></label><small>상세도는 지원 모델에서 적용되며 정확한 글자 수 제한은 아닙니다.</small><label>추가 대화 지시문<textarea id="instructions" rows="5" maxlength="16000" placeholder="말투, 서술 시점, 답변 길이 등"></textarea></label><small>공통 대화 지시문에 추가됩니다. 캐릭터 설정과 대화 기록은 Risu가 전달합니다.</small><p><button id="save-settings">설정 저장</button><span id="saved" role="status"></span></p><p>저장하면 다음 요청부터 적용되며 재시작 후에도 유지됩니다. 연결 테스트도 저장된 설정을 사용합니다.</p></section>
-<section><b>연결 시험</b><p>짧은 한 번의 응답으로 실제 구독 연결을 확인합니다.</p><button id="test">구독으로 테스트</button><pre id="result">아직 실행하지 않았습니다.</pre><button id="stop" disabled>중단</button></section>
-<section><b>현재 검증 범위</b><p>텍스트·SSE 응답·중단·전체 문맥 전달. 대화 기록은 Risu가 관리하고, 매 요청은 임시 대화로 실행합니다. 로그인과 모델 목록 조회에는 App Server를 사용합니다.</p><small>temperature, top_p, penalty, seed, max_tokens 등의 생성 옵션은 이 버전에서 적용되지 않습니다. 요청별 무시된 옵션은 아래 진단에 표시됩니다. 구독 한도는 무제한이 아니며 일반 Codex 사용과 공유됩니다.</small><pre id="diagnostics"></pre></section></main><script src="/setup.js"></script></html>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risu Bridge · 연결 설정</title>
+<style>
+:root{color-scheme:light;--ink:#202d29;--muted:#65736c;--line:#dce4de;--green:#226447;--paper:#fff;--soft:#f3f6f2}
+*{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:900px;margin:auto;padding:44px 28px 32px}header{margin-bottom:30px}.brand{font-size:12px;font-weight:750;letter-spacing:.13em;color:var(--green)}h1{font-size:34px;letter-spacing:-.045em;line-height:1.25;margin:12px 0}h2{font-size:19px;letter-spacing:-.025em;margin:0}p{margin:8px 0}small,.hint{font-size:13px;color:var(--muted)}header p{color:var(--muted)}.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:26px;margin:16px 0}.heading{display:flex;align-items:center;gap:12px;margin-bottom:16px}.step{display:grid;place-items:center;width:29px;height:29px;border-radius:50%;background:#eaf2ec;color:var(--green);font-size:12px;font-weight:750;flex-shrink:0}.status{padding:12px 15px;border-radius:9px;background:var(--soft);font-weight:600}.status[data-state="connected"]{color:#185d3d;background:#eaf5ed}.status[data-state="error"]{color:#944333;background:#fff0eb}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}button,input,select,textarea{font:inherit}button{border:1px solid var(--line);border-radius:8px;padding:9px 15px;background:white;color:var(--ink);cursor:pointer;font-weight:600}button.primary{background:var(--green);border-color:var(--green);color:white}button:hover:not(:disabled){filter:brightness(.95)}button:disabled{opacity:.45;cursor:not-allowed}input,select,textarea{width:100%;min-width:0;border:1px solid #cbd6ce;border-radius:8px;padding:10px 12px;background:white;color:var(--ink)}input[readonly]{background:#f8faf7}textarea{resize:vertical;min-height:110px}label{display:block;font-size:13px;font-weight:650;margin:16px 0 6px}.row{display:flex;gap:8px;align-items:center}.row button{white-space:nowrap;flex-shrink:0}.grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px}.grid label{margin-top:0}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.65}.note{padding:12px 15px;background:var(--soft);border-radius:9px;margin-top:18px}.settings-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin:18px 0}.settings-list div{display:flex;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}dt{color:var(--muted)}dd{margin:0;text-align:right}code{font:13px/1.6 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--soft);padding:16px;border-radius:9px;font:13px/1.7 ui-monospace,SFMono-Regular,monospace}#result{font-family:inherit;font-size:15px;line-height:1.7;min-height:68px}#error{color:#944333;background:#fff0eb;border-radius:9px;padding:12px 15px}#error:empty{display:none}a{color:var(--green);text-underline-offset:3px}summary{cursor:pointer;font-weight:600}details{margin-top:18px}details p,details ul{color:var(--muted);font-size:13px}li{margin:6px 0}footer{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin-top:24px}:focus-visible{outline:3px solid #83b496;outline-offset:3px}[hidden]{display:none!important}
+@media(max-width:620px){main{padding:26px 16px}h1{font-size:29px}.card{padding:20px}.grid,.settings-list{grid-template-columns:1fr}.grid{gap:12px}.row{flex-wrap:wrap}.row input{flex-basis:100%}footer{flex-direction:column}}
+</style>
+</head>
+<body>
+<main>
+<header><span class="brand">RISU SUBSCRIPTION BRIDGE</span><h1>익숙한 Risu에, 내 AI 구독을.</h1><p>ChatGPT 계정을 연결하고 Risu에서 사용할 응답을 설정하세요.</p></header>
+<section class="card" aria-labelledby="account-title">
+<div class="heading"><span class="step">01</span><h2 id="account-title">ChatGPT 계정 연결</h2></div>
+<p id="status" class="status" role="status" aria-live="polite">연결 상태를 확인하고 있습니다…</p>
+<p class="hint">브리지 전용 로그인입니다. 기존 Codex 로그인과 별도로 연결하세요.</p>
+<div class="actions"><button id="login" class="primary">ChatGPT 로그인</button><button id="refresh">상태 새로고침</button></div>
+<p><a id="auth" hidden target="_blank" rel="noopener noreferrer">공식 로그인 페이지 열기 ↗</a></p>
+<p id="error" role="alert"></p>
+</section>
+<section class="card" aria-labelledby="connection-title">
+<div class="heading"><span class="step">02</span><h2 id="connection-title">Risu 연결</h2></div>
+<p>Risu의 <strong>설정 → 채팅 봇 → 모델 → Custom API</strong>에 아래 값을 입력하세요.</p>
+<label for="endpoint">요청 주소</label><div class="row"><input id="endpoint" readonly spellcheck="false"><button id="copy-endpoint">주소 복사</button></div>
+<label for="token">로컬 연결 키</label><div class="row"><input id="token" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-hint"><button id="copy-key">키 복사</button></div>
+<p id="key-hint" class="hint">터미널의 설정 링크로 열면 자동 입력됩니다. 이 키와 설정 링크는 본인만 사용하세요.</p>
+<p id="copy-feedback" class="hint" role="status" aria-live="polite"></p>
+<dl class="settings-list"><div><dt>요청 모델</dt><dd><code>subscription-default</code></dd></div><div><dt>포맷</dt><dd>OpenAI Compatible</dd></div><div><dt>토크나이저</dt><dd>Tiktoken (OpenAI)</dd></div><div><dt>Response 스트리밍</dt><dd>켜기 가능</dd></div><div><dt>Ooba 모드</dt><dd>끄기</dd></div></dl>
+<p class="note hint">Mac용 Risu 데스크톱 앱을 사용하세요. 공식 웹 버전에서는 localhost 연결이 차단됩니다.</p>
+</section>
+<section class="card" aria-labelledby="settings-title">
+<div class="heading"><span class="step">03</span><h2 id="settings-title">응답 설정</h2></div>
+<p class="hint" id="settings-hint">ChatGPT를 연결하면 모델과 저장된 설정을 불러옵니다.</p>
+<fieldset id="generation-settings" disabled aria-labelledby="settings-title">
+<div class="grid"><div><label for="models">기본 모델</label><select id="models"><option value="subscription-default">모델 기본값</option></select></div><div><label for="effort">추론 강도</label><select id="effort"><option value="">모델 기본값</option></select></div><div><label for="verbosity">답변 상세도</label><select id="verbosity"><option value="">모델 기본값</option><option value="low">간결하게</option><option value="medium">보통</option><option value="high">상세하게</option></select></div></div>
+<label for="instructions">추가 지시사항 <span class="hint">· 선택</span></label><textarea id="instructions" rows="4" maxlength="16000" placeholder="예: 서술은 한국어로, 대사는 캐릭터의 말투에 맞춰 작성해 주세요."></textarea>
+<p class="hint">캐릭터와 대화 기록은 Risu가 전달합니다. 상세도는 정확한 글자 수나 토큰 수를 제한하지 않습니다.</p>
+<div class="actions"><button id="save-settings" class="primary">설정 저장</button><span id="saved" class="hint" role="status" aria-live="polite"></span></div>
+</fieldset>
+</section>
+<section class="card" aria-labelledby="test-title">
+<div class="heading"><span class="step">04</span><h2 id="test-title">연결 테스트</h2></div>
+<p>저장된 설정으로 짧은 응답을 받아봅니다. 성공하면 Risu에서 대화를 시작하세요.</p>
+<p class="hint">테스트에도 구독 사용량이 소모됩니다.</p>
+<div class="actions"><button id="test" class="primary" disabled>응답 확인</button><button id="stop" disabled>중단</button></div>
+<pre id="result" role="status" aria-live="polite">아직 테스트하지 않았습니다.</pre>
+</section>
+<details class="card"><summary>사용 범위와 연결 진단</summary>
+<ul><li>텍스트 대화와 스트리밍을 지원합니다. 대화 기록은 Risu가 관리합니다.</li><li>한 번에 한 응답을 생성하며, 요청은 최대 180초 동안 처리합니다. 입력 한도는 2 MiB입니다.</li><li>temperature, top_p, penalty, seed, max_tokens 등은 적용되지 않습니다. 도구 호출·이미지 입력·구조화 출력·복수 생성은 지원하지 않습니다.</li><li>구독 사용량 제한이 적용됩니다. 연결이 끊어졌다면 실행 터미널을 확인하고 브리지를 다시 실행하세요.</li></ul>
+<p>아래에는 연결 상태와 최근 요청의 처리 시간·사용량·무시된 옵션이 표시됩니다.</p><pre id="diagnostics">연결 상태 확인 중…</pre>
+</details>
+<footer><span>사용하는 동안 실행 터미널을 열어 두세요. 종료는 Ctrl+C.</span><span id="version">Risu Bridge</span></footer>
+</main>
+<script src="/setup.js"></script>
+</body>
+</html>

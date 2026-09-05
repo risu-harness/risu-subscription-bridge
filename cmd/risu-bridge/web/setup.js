@@ -1,56 +1,140 @@
 const $ = id => document.getElementById(id);
 const initial = new URLSearchParams(location.hash.slice(1)).get('key');
-if (initial) { sessionStorage.setItem('bridge-key', initial); history.replaceState(null, '', '/'); }
+if (initial) {
+  sessionStorage.setItem('bridge-key', initial);
+  history.replaceState(null, '', '/');
+}
 $('token').value = sessionStorage.getItem('bridge-key') || '';
 $('endpoint').value = location.origin + '/v1/chat/completions';
-const headers = () => ({'Content-Type': 'application/json', Authorization: 'Bearer ' + $('token').value});
+
 async function call(path, options = {}) {
-  if (!$('token').value.trim()) throw Error('브리지 실행 터미널에 표시된 Setup 주소(#key= 포함)를 열어 주세요. 일반 주소만 열면 로컬 연결 키가 전달되지 않습니다.');
-  const r = await fetch(path, {...options, headers: headers()}); const data = await r.json();
-  if (r.status === 401 && data.error?.code === 'unauthorized') throw Error('로컬 연결 키가 맞지 않습니다. 브리지 실행 터미널의 Setup 주소(#key= 포함)를 다시 열어 주세요.');
-  if (!r.ok) throw Error(data.error?.message || '연결 실패'); return data;
+  const token = $('token').value.trim();
+  if (!token) throw Error('실행 터미널의 설정 링크(#key= 포함)를 다시 열거나 로컬 연결 키를 입력해 주세요.');
+  const response = await fetch(path, {...options, headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token}});
+  const data = await response.json();
+  if (response.status === 401 && data.error?.code === 'unauthorized') throw Error('로컬 연결 키가 맞지 않습니다. 실행 터미널의 설정 링크를 다시 열어 주세요.');
+  if (!response.ok) throw Error(data.error?.message || '연결하지 못했습니다. 실행 터미널을 확인해 주세요.');
+  return data;
 }
-let settingsLoaded=false, catalog=[];
-function efforts(value='') {
- const chosen=$('models').value==='subscription-default' ? catalog.find(m=>m.isDefault)||catalog[0] : catalog.find(m=>(m.model||m.id)===$('models').value);
- $('effort').replaceChildren(new Option('모델 기본값',''),...(chosen?.supportedReasoningEfforts||[]).map(e=>new Option(e.reasoningEffort,e.reasoningEffort)));
- $('effort').value=value;
- if($('effort').selectedIndex<0)$('effort').value='';
+
+let settingsLoaded = false, catalog = [], controller;
+function status(message, state = '') {
+  $('status').textContent = message;
+  $('status').dataset.state = state;
+}
+function efforts(value = '') {
+  const chosen = $('models').value === 'subscription-default'
+    ? catalog.find(model => model.isDefault) || catalog[0]
+    : catalog.find(model => (model.model || model.id) === $('models').value);
+  $('effort').replaceChildren(new Option('모델 기본값', ''), ...(chosen?.supportedReasoningEfforts || []).map(item => new Option(item.reasoningEffort, item.reasoningEffort)));
+  $('effort').value = value;
+  if ($('effort').selectedIndex < 0) $('effort').value = '';
 }
 async function loadSettings() {
- const r=await call('/internal/settings');catalog=r.models;
- $('models').replaceChildren(new Option('Codex 기본 모델','subscription-default'),...catalog.map(m=>new Option(m.displayName||m.model||m.id,m.model||m.id)));
- for(const key of ['models','verbosity','instructions'])$(key).value=r.settings[key==='models'?'model':key];
- efforts(r.settings.effort);settingsLoaded=true;
+  const data = await call('/internal/settings');
+  catalog = data.models;
+  $('models').replaceChildren(new Option('모델 기본값', 'subscription-default'), ...catalog.map(model => new Option(model.displayName || model.model || model.id, model.model || model.id)));
+  $('models').value = data.settings.model;
+  $('verbosity').value = data.settings.verbosity;
+  $('instructions').value = data.settings.instructions;
+  efforts(data.settings.effort);
+  settingsLoaded = true;
 }
-$('models').onchange=()=>efforts();
-$('save-settings').onclick=async()=>{
- $('save-settings').disabled=true;
- try {await call('/internal/settings',{method:'POST',body:JSON.stringify({model:$('models').value,effort:$('effort').value,verbosity:$('verbosity').value,instructions:$('instructions').value})});$('saved').textContent='저장됨 · 다음 요청부터 적용';await refresh();}
- catch(e){$('error').textContent=e.message;$('saved').textContent='저장하지 못했습니다.';}
- finally{$('save-settings').disabled=false;}
+$('models').onchange = () => { efforts(); $('saved').textContent = '변경한 설정을 저장해 주세요.'; };
+for (const id of ['effort', 'verbosity', 'instructions']) {
+  $(id).oninput = () => { $('saved').textContent = '변경한 설정을 저장해 주세요.'; };
+}
+$('token').oninput = () => {
+  settingsLoaded = false;
+  $('generation-settings').disabled = true;
+  $('test').disabled = true;
+  $('auth').hidden = true;
+  $('copy-feedback').textContent = '';
+  status('키를 변경했습니다. 상태 새로고침을 눌러 연결을 확인하세요.');
+};
+$('save-settings').onclick = async () => {
+  $('save-settings').disabled = true;
+  $('error').textContent = '';
+  try {
+    await call('/internal/settings', {method: 'POST', body: JSON.stringify({model: $('models').value, effort: $('effort').value, verbosity: $('verbosity').value, instructions: $('instructions').value})});
+    $('saved').textContent = '저장했습니다. 다음 응답부터 적용됩니다.';
+    await refresh();
+  } catch (error) {
+    $('error').textContent = error.message;
+    $('saved').textContent = '저장하지 못했습니다.';
+  } finally { $('save-settings').disabled = false; }
 };
 async function refresh() {
+  $('refresh').disabled = true;
   try {
-    sessionStorage.setItem('bridge-key', $('token').value);
-    const s = await call('/internal/status');
-    $('status').textContent = s.account.connected ? '● ChatGPT 연결됨 · ' + (s.account.plan || '구독') : '○ ChatGPT 로그인이 필요합니다';
-    $('diagnostics').textContent = JSON.stringify(s, null, 2); $('error').textContent = '';
-    if (s.account.connected && !settingsLoaded) await loadSettings();
-  } catch (e) { $('status').textContent = '○ 로컬 브리지 연결 확인이 필요합니다'; $('error').textContent = e.message; }
+    sessionStorage.setItem('bridge-key', $('token').value.trim());
+    const data = await call('/internal/status');
+    const connected = data.account.connected;
+    status(connected ? 'ChatGPT 연결됨' + (data.account.plan ? ' · ' + data.account.plan : '') + (data.busy ? ' · 응답 생성 중' : '') : 'ChatGPT 로그인이 필요합니다.', connected ? 'connected' : '');
+    $('diagnostics').textContent = JSON.stringify(data, null, 2);
+    $('version').textContent = 'Risu Bridge · ' + data.version;
+    $('error').textContent = '';
+    $('login').textContent = connected ? '다시 로그인' : 'ChatGPT 로그인';
+    if (connected) {
+      $('auth').hidden = true;
+      if (!settingsLoaded) await loadSettings();
+    } else { settingsLoaded = false; }
+    $('generation-settings').disabled = !connected || data.busy;
+    $('test').disabled = !connected || data.busy || Boolean(controller);
+    $('settings-hint').textContent = !connected ? 'ChatGPT를 연결하면 모델과 저장된 설정을 불러옵니다.' : data.busy ? '응답이 끝난 뒤 상태를 새로고침하면 설정을 변경할 수 있습니다.' : 'Risu의 요청 모델이 subscription-default일 때 아래 모델을 사용합니다. 특정 모델 ID를 지정하면 그 모델이 우선합니다.';
+  } catch (error) {
+    status('연결 상태를 확인할 수 없습니다.', 'error');
+    $('error').textContent = error.message;
+    $('generation-settings').disabled = true;
+    $('test').disabled = true;
+  } finally { $('refresh').disabled = false; }
 }
 $('refresh').onclick = refresh;
 $('login').onclick = async () => {
-  try { const r = await call('/internal/login', {method: 'POST', body: '{}'}); const u = new URL(r.authUrl); if (u.protocol !== 'https:' || !['auth.openai.com', 'chatgpt.com'].includes(u.hostname)) throw Error('예상하지 못한 로그인 URL'); $('auth').href = u.href; $('auth').hidden = false; $('status').textContent = '아래 공식 로그인 링크를 열고 로그인한 뒤 상태 확인을 눌러주세요.'; }
-  catch (e) { $('error').textContent = e.message; }
+  $('login').disabled = true;
+  $('error').textContent = '';
+  $('auth').hidden = true;
+  try {
+    const data = await call('/internal/login', {method: 'POST', body: '{}'});
+    const url = new URL(data.authUrl);
+    if (url.protocol !== 'https:' || !['auth.openai.com', 'chatgpt.com'].includes(url.hostname)) throw Error('공식 로그인 주소를 확인할 수 없습니다. 다시 시도해 주세요.');
+    $('auth').href = url.href;
+    $('auth').hidden = false;
+    settingsLoaded = false;
+    $('generation-settings').disabled = true;
+    $('test').disabled = true;
+    status('아래 링크에서 로그인한 뒤 상태 새로고침을 눌러 주세요.');
+  } catch (error) { $('error').textContent = error.message; }
+  finally { $('login').disabled = false; }
 };
-for (const [button, field] of [['copy-endpoint', 'endpoint'], ['copy-key', 'token']]) $(button).onclick = async () => { try { await navigator.clipboard.writeText($(field).value); } catch { $(field).select(); } };
-let controller;
+for (const [button, field, label] of [['copy-endpoint', 'endpoint', '요청 주소'], ['copy-key', 'token', '로컬 연결 키']]) {
+  $(button).onclick = async () => {
+    if (!$(field).value.trim()) { $('copy-feedback').textContent = '먼저 실행 터미널의 설정 링크로 열어 키를 불러오세요.'; return; }
+    try {
+      await navigator.clipboard.writeText($(field).value.trim());
+      $('copy-feedback').textContent = label + '를 복사했습니다.';
+    } catch {
+      $(field).focus();
+      $(field).select();
+      $('copy-feedback').textContent = '자동 복사가 지원되지 않습니다. 선택된 값을 직접 복사해 주세요.';
+    }
+  };
+}
 $('stop').onclick = () => controller?.abort();
 $('test').onclick = async () => {
-  controller = new AbortController(); $('test').disabled = true; $('stop').disabled = false; $('result').textContent = '응답 기다리는 중…';
-  try { const r = await call('/v1/chat/completions', {method: 'POST', signal: controller.signal, body: JSON.stringify({model: 'subscription-default', messages: [{role: 'user', content: '한국어로 연결 성공이라고만 답해 주세요.'}], stream: false})}); $('result').textContent = r.choices[0].message.content; }
-  catch (e) { $('result').textContent = e.name === 'AbortError' ? '중단했습니다.' : e.message; }
-  finally { $('test').disabled = false; $('stop').disabled = true; refresh(); }
+  controller = new AbortController();
+  $('test').disabled = true;
+  $('stop').disabled = false;
+  $('generation-settings').disabled = true;
+  $('result').textContent = '저장된 설정으로 응답을 기다리고 있습니다…';
+  try {
+    const data = await call('/v1/chat/completions', {method: 'POST', signal: controller.signal, body: JSON.stringify({model: 'subscription-default', messages: [{role: 'user', content: '한국어로 연결 성공이라고만 답해 주세요.'}], stream: false})});
+    $('result').textContent = data.choices[0].message.content;
+  } catch (error) { $('result').textContent = error.name === 'AbortError' ? '응답 생성을 중단했습니다.' : error.message; }
+  finally {
+    controller = undefined;
+    $('stop').disabled = true;
+    await refresh();
+  }
 };
 refresh();

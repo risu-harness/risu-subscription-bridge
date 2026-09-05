@@ -21,8 +21,8 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 main() {
-  local version=${1:-0.2.1} arch cmd
-  [[ $# -le 1 && "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf '사용법: sh scripts/build-release.sh [0.2.1]\n' >&2; exit 1; }
+  local version=${1:-0.2.2} arch cmd
+  [[ $# -le 1 && "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf '사용법: sh scripts/build-release.sh [0.2.2]\n' >&2; exit 1; }
   for cmd in go tar shasum mktemp mkdir mv rm dirname; do
     command -v "${cmd}" >/dev/null || { printf '필수 명령 없음: %s\n' "${cmd}" >&2; exit 1; }
   done
