@@ -252,8 +252,7 @@ install_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 export BRIDGE_DATA_DIR=${BRIDGE_DATA_DIR:-"$install_dir/data"}
 SH
   # mktemp basename only; never interpolate user-provided paths as shell code.
-  printf 'release_dir=%s\n' "${release_dir}" >> "${__launcher}"
-  printf 'codex_target=%s\n' "${__target}" >> "${__launcher}"
+  printf 'release_dir=%s\ncodex_target=%s\n' "${release_dir}" "${__target}" >> "${__launcher}"
   cat >> "${__launcher}" <<'SH'
 if [ -f "$install_dir/releases/$release_dir/codex-path" ]; then
   BRIDGE_CODEX_BIN=$(cat "$install_dir/releases/$release_dir/codex-path")
