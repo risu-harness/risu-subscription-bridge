@@ -46,7 +46,7 @@ sh "$HOME/.local/share/risu-subscription-bridge/bin/risu-bridge"
 
 브라우저의 Local Network Access 허용이 필요할 수 있다. Risu의 네트워크 라우팅은 **사용자 Mac에서 직접 localhost로 연결**해야 한다. 원격 프록시에 맡기면 원격 서버의 localhost를 가리킨다. 웹 Risu 연결이 막힐 경우 Mac 데스크톱 Risu 또는 로컬 Risu에서 시험한다. CORS 헤더만으로 모든 브라우저 보안 제한을 해결하지는 못한다.
 
-기본 허용 Origin은 `https://risuai.xyz`, `https://risuai.net`과 브리지 자체 Origin이다. 로컬 Risu 등은 `BRIDGE_ALLOWED_ORIGINS`에 쉼표로 명시한다. `*` 허용은 하지 않는다.
+기본 허용 Origin은 `https://risuai.xyz`, `https://risuai.net`, 데스크톱 Tauri의 `tauri://localhost`·`http://tauri.localhost`와 브리지 자체 Origin이다. 로컬 Risu 등은 `BRIDGE_ALLOWED_ORIGINS`에 쉼표로 명시한다. `*` 허용은 하지 않는다.
 
 ## 구현 범위와 차이
 

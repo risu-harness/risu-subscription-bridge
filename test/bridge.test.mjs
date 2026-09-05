@@ -72,3 +72,16 @@ test('regeneration/edit sends the supplied history fresh; concurrent requests ge
   assert.equal((await f.call(request)).status,429);release();await (await first).text();
   const edited={messages:[{role:'user',content:'수정'}]};await(await f.call(edited)).text();assert.deepEqual(seen[1],edited.messages);
 });
+
+test('desktop origins allow API with a key, but never setup or anonymous generation',async t=>{
+  const f=await fixture(t,async(r,{delta})=>{delta('ok');return{}});
+  for(const Origin of ['tauri://localhost','http://tauri.localhost']) {
+    const headers={...f.headers,Origin};
+    assert.equal((await f.call(request,{headers})).status,200);
+    assert.equal((await f.call(request,{headers:{...headers,Authorization:''}})).status,401);
+    assert.equal((await fetch(f.url+'/internal/status',{headers})).status,403);
+  }
+  for(const Origin of ['null','tauri://evil.example','http://tauri.localhost.evil.example']) {
+    assert.equal((await f.call(request,{headers:{...f.headers,Origin}})).status,403);
+  }
+});

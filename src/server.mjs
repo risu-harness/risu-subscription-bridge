@@ -13,7 +13,7 @@ async function readJSON(req) {
   try { return JSON.parse(Buffer.concat(parts).toString('utf8')); } catch { throw new BridgeError('Invalid JSON.', 400, 'invalid_json'); }
 }
 
-export function createBridge({adapter, token, port = 8787, origins = ['https://risuai.xyz', 'https://risuai.net'], runtime = ''}) {
+export function createBridge({adapter, token, port = 8787, origins = ['https://risuai.xyz', 'https://risuai.net', 'tauri://localhost', 'http://tauri.localhost'], runtime = ''}) {
   const metrics = {requests: 0, completed: 0, cancelled: 0, failed: 0, last: null};
   let busy = false;
   const server = http.createServer(async (req, res) => {
@@ -26,7 +26,7 @@ export function createBridge({adapter, token, port = 8787, origins = ['https://r
     try {
       if (!hosts.has(req.headers.host)) throw new BridgeError('Invalid Host.', 403, 'invalid_host');
       const origin = req.headers.origin;
-      if (origin && !allowed.has(origin)) throw new BridgeError('Origin is not allowed.', 403, 'origin_denied');
+      if (origin && !allowed.has(origin)) throw new BridgeError(`Origin is not allowed: ${origin.slice(0, 200)}`, 403, 'origin_denied');
       if (origin) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); }
       if (req.method === 'OPTIONS') {
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
