@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-var version = "0.2.0"
+var version = "0.2.1"
 
 func randomKey() string {
 	b := make([]byte, 24)
@@ -47,13 +47,12 @@ func main() {
 func run() error {
 	restart := flag.Bool("restart", false, "기존 브리지 종료 후 같은 포트로 재시작")
 	showVersion := flag.Bool("version", false, "버전 표시")
-	adapter := flag.String("adapter", "app-server", "app-server")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("risu-bridge", version)
 		return nil
 	}
-	if flag.NArg() > 0 || *adapter != "app-server" {
+	if flag.NArg() > 0 {
 		return errors.New("지원하지 않는 옵션입니다. --help를 확인하세요.")
 	}
 	action := os.Getenv("BRIDGE_ACTION")
@@ -175,8 +174,8 @@ func run() error {
 	env = append(env, "CODEX_HOME="+codexHome)
 	codexBin := os.Getenv("BRIDGE_CODEX_BIN")
 	if codexBin == "" {
-		codexBin = "codex"
-		if _, e := os.Stat("/Applications/ChatGPT.app/Contents/Resources/codex"); e == nil {
+		codexBin, err = exec.LookPath("codex")
+		if err != nil {
 			codexBin = "/Applications/ChatGPT.app/Contents/Resources/codex"
 		}
 	}

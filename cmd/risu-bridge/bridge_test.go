@@ -206,11 +206,22 @@ func fakeCodexProcess() {
 				os.Exit(8)
 			}
 			result = map[string]any{"thread": map[string]string{"id": "t1"}}
+		case "thread/inject_items":
+			if path := os.Getenv("RISU_INPUT_MARKER"); path != "" {
+				_ = os.WriteFile(path, m.Params, 0600)
+			}
+			if os.Getenv("RISU_INJECT_FAIL") == "1" {
+				fmt.Println(string(marshal(map[string]any{"id": m.ID, "error": map[string]any{"code": -32602, "message": "unsupported"}})))
+				continue
+			}
 		case "thread/unsubscribe":
 			if path := os.Getenv("RISU_CLEANUP_MARKER"); path != "" {
 				_ = os.WriteFile(path, []byte("unsubscribed"), 0600)
 			}
 		case "turn/start":
+			if path := os.Getenv("RISU_INPUT_MARKER"); path != "" {
+				_ = os.WriteFile(path+".turn", m.Params, 0600)
+			}
 			fmt.Println(string(marshal(map[string]any{"method": "item/agentMessage/delta", "params": map[string]string{"threadId": "t1", "delta": "안녕"}})))
 			fmt.Println(string(marshal(map[string]any{"method": "thread/tokenUsage/updated", "params": map[string]any{"threadId": "t1", "tokenUsage": map[string]any{"last": map[string]int{"inputTokens": 10, "outputTokens": 2, "totalTokens": 12}}}})))
 			fmt.Println(string(marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "t1", "turn": map[string]string{"id": "u1", "status": "completed"}}})))

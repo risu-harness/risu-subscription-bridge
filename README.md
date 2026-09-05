@@ -8,7 +8,7 @@ RisuAI의 캐릭터·로어북·대화 UI를 유지하면서 ChatGPT 구독 인�
 curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-bridge/main/install.sh | sh
 ```
 
-Node, Python, Go, npm, Homebrew, Git, sudo가 필요하지 않습니다. 설치 스크립트가 Mac CPU를 확인하고 GitHub Releases에서 미리 빌드한 Go 브리지와 공식 Codex 0.153.0 네이티브 실행 파일을 내려받아 SHA-256을 검증한 뒤 실행합니다. Apple Silicon과 Intel용 파일을 제공합니다. 첫 ChatGPT 로그인은 직접 진행해야 합니다.
+Node, Python, Go, npm, Homebrew, Git, sudo가 필요하지 않습니다. 설치 스크립트가 Mac CPU를 확인하고 GitHub Releases에서 미리 빌드한 Go 브리지를 내려받아 SHA-256을 검증합니다. Codex는 먼저 PATH에서 찾습니다. Homebrew·npm 등으로 설치하여 `codex` 명령을 실행할 수 있으면 해당 실행 파일을 재사용하고, 없을 때만 공식 Codex 최신 안정 버전의 네이티브 실행 파일을 다운로드·검증합니다. Apple Silicon과 Intel용 파일을 제공합니다. 브리지용 첫 ChatGPT 로그인은 직접 진행해야 합니다. 기존 Codex 실행 파일을 재사용해도 브리지는 별도 인증·설정 저장 공간을 사용합니다.
 
 설치 위치는 `~/.local/share/risu-subscription-bridge`입니다. 실행 후 열리는 설정 페이지에서 **ChatGPT 로그인 → 공식 로그인 링크 → 상태 확인** 순으로 진행하세요. 터미널을 열어 두어야 하며 Ctrl+C로 종료합니다. 백그라운드 서비스는 아닙니다.
 
@@ -53,7 +53,8 @@ Risu 설정 → 채팅 봇 → 모델에서 다음 값을 입력합니다.
 
 - Risu가 대화 기록을 소유합니다. 요청마다 새 `ephemeral` thread를 만들고 완료·취소 후 `thread/unsubscribe`합니다. 과거 thread를 재사용하지 않으므로 재생성·편집·분기에 이전 응답이 중복 누적되지 않습니다.
 - App Server의 실제 `item/agentMessage/delta`를 SSE로 전송합니다. CLI `exec` 생성 방식은 이전 변경에서 제거되었으며, Go 버전도 현재 App Server 동작을 유지합니다.
-- system/developer/user/assistant 텍스트와 이름을 순서 있는 JSON 대화록으로 전달합니다. API의 네이티브 역할 채널과 완전히 같은 의미는 아닙니다.
+- 대화 기록은 `thread/inject_items`로 Responses 메시지 항목(`role`, `content`)을 전달합니다. system/developer/user/assistant 역할과 순서를 유지하며, 마지막 user 메시지는 중복 없이 `turn/start`로 보냅니다. 마지막 항목이 user가 아니면 전체 기록 뒤에 다음 assistant 응답을 요청하는 짧은 user 입력을 추가합니다. assistant 접두문 이어쓰기와는 다릅니다.
+- Codex 0.153.0의 실험적 `thread/inject_items`를 사용하며, 실패하면 문자열 대화록으로 우회하지 않고 오류를 반환합니다. `name`은 상류 메시지 필드가 없어 본문 앞 `[speaker name: "이름"]`으로 보존합니다. Codex 자체 지시문도 적용되므로 OpenAI Chat Completions와 완전한 의미적 동일성을 보장하지 않습니다.
 - `temperature`, `top_p`, `top_k`, `min_p`, penalties, `logit_bias`, `seed`, `max_tokens`, `max_completion_tokens`는 적용되지 않습니다. JSON의 `bridge.ignored_parameters`, SSE 헤더, 상태 페이지에서 확인할 수 있습니다. 특히 API식 출력 토큰 상한을 보장하지 않습니다.
 - 도구 호출, 이미지 입력, 구조화 출력, 복수 생성은 거부합니다. 문자로 표현된 이미지 태그·감정 마크업은 보존하며 실제 렌더링은 Risu가 담당합니다.
 - 한 번에 한 요청, 생성 제한 시간 180초, 입력 2 MiB 제한입니다. 동시 요청에는 429를 반환하며 자동 재시도는 없습니다. SSE 도중 실패하면 오류 이벤트를 보내고 `[DONE]`을 보내지 않습니다.
@@ -69,7 +70,7 @@ go test -race ./...
 go vet ./...
 go build -o /tmp/risu-bridge ./cmd/risu-bridge
 BRIDGE_CODEX_BIN=/path/to/codex BRIDGE_DATA_DIR=/tmp/risu-bridge-data /tmp/risu-bridge
-sh scripts/build-release.sh 0.2.0
+sh scripts/build-release.sh 0.2.1
 ```
 
 `dist/`에 macOS arm64/amd64 압축 파일과 `SHA256SUMS`가 생성됩니다. 릴리스 시 바이너리와 checksum을 GitHub Release에 업로드한 후 `install.sh`의 고정 릴리스 버전을 해당 태그로 맞춥니다. 테스트는 가짜 Codex subprocess를 포함하여 HTTP/SSE, 취소·동시 실행, stop 경계, 입력 검증, 설정 저장, RPC 알림/응답 순서 경합을 검증합니다. 실제 구독 모델 품질이나 50~100턴 Risu 대화 시험을 대체하지 않습니다.
@@ -90,3 +91,7 @@ BRIDGE_SOURCE_BIN=/tmp/risu-bridge BRIDGE_INSTALL_DIR=/tmp/risu-go-install BRIDG
 실행 환경 변수: `BRIDGE_DATA_DIR`, `BRIDGE_CODEX_BIN`, `BRIDGE_PORT`, `BRIDGE_OPEN_BROWSER=0`, `BRIDGE_ACTION=reuse|stop|restart`, `BRIDGE_ALLOWED_ORIGINS`(정확한 Origin을 쉼표로 구분; wildcard 미지원).
 
 기본 허용 Origin: `https://risuai.xyz`, `https://risuai.net`, `tauri://localhost`, `http://tauri.localhost`, 브리지 자체 주소. 로컬 Risu 서버 등은 필요한 Origin을 명시적으로 추가하세요. 외부 터널은 기본 설치에 포함되지 않습니다.
+
+PATH에서 찾은 Codex는 경로를 저장해 재실행에도 사용하며, 브리지가 다운로드·자동 업데이트·삭제하지 않습니다. Homebrew 등의 심볼릭 링크 경로를 유지하므로 기존 설치 도구로 업데이트할 수 있습니다. 실행 검증에 실패하면 기존 설치를 복구하도록 안내하며 설치를 중단합니다. 저장한 실행 파일이 삭제되면 기존 설치를 복구하거나 브리지 설치 명령을 다시 실행하세요.
+
+PATH에 Codex가 없어 브리지가 직접 설치하는 경우에만, Codex 버전을 설치·재설치할 때 GitHub의 latest 안정 릴리스에서 결정합니다. macOS 기본 `plutil`로 릴리스 메타데이터를 읽고, 해당 파일의 SHA-256을 검증합니다. 사전 릴리스와 체크섬이 없는 파일은 설치하지 않습니다. 설치된 `bin/risu-bridge` 실행 시에도 최신 안정 버전을 확인합니다. 새 버전이 있으면 SHA-256 및 `--version` 실행 검증 후 현재 설치의 Codex 바이너리를 원자적으로 교체하고 이전 바이너리·다운로드 캐시를 정리합니다. 업데이트 실패 시 기존 버전으로 실행합니다. 이미 실행 중인 프로세스에는 다음 재시작부터 적용됩니다. 도움말·버전 확인·중지 명령에는 업데이트를 실행하지 않습니다. 별도 Codex 설치나 과거 브리지 릴리스 폴더의 바이너리는 삭제하지 않습니다. 최신 Codex의 프로토콜 변경은 브리지 호환성에 영향을 줄 수 있습니다.

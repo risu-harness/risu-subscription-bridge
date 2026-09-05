@@ -157,7 +157,7 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		b.mu.Lock()
-		v := map[string]any{"account": a, "metrics": b.metrics, "busy": b.busy, "runtime": b.runtime, "adapter": "app-server", "delivery": "token-delta", "implementation": "go", "version": version, "mode": "Risu owns history; fresh ephemeral generation per request", "controlPlane": "App Server for login, models and generation"}
+		v := map[string]any{"account": a, "metrics": b.metrics, "busy": b.busy, "runtime": b.runtime, "version": version}
 		encoded := marshal(v)
 		b.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")

@@ -34,7 +34,6 @@ async function refresh() {
   try {
     sessionStorage.setItem('bridge-key', $('token').value);
     const s = await call('/internal/status');
-    $('delivery').textContent = 'App Server · 생성 중 텍스트를 순차 표시합니다.';
     $('status').textContent = s.account.connected ? '● ChatGPT 연결됨 · ' + (s.account.plan || '구독') : '○ ChatGPT 로그인이 필요합니다';
     $('diagnostics').textContent = JSON.stringify(s, null, 2); $('error').textContent = '';
     if (s.account.connected && !settingsLoaded) await loadSettings();

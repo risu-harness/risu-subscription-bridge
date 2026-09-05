@@ -11,7 +11,7 @@ IFS=$'\n\t'
 umask 077
 
 readonly __release='v0.2.0'
-readonly __codex_version='0.153.0'
+__codex_version=''
 __stage=''
 __launcher=''
 __cache_temp=''
@@ -88,10 +88,6 @@ parse_options() {
       --version) printf '%s\n' "${__release}"; exit 0 ;;
       --install-only) __install_only=1 ;;
       --restart) __bridge_args+=(--restart) ;;
-      --adapter)
-        [[ $# -ge 2 && "${2}" = 'app-server' ]] || fail '--adapter는 app-server만 지원합니다.'
-        shift ;;
-      --adapter=app-server) ;;
       *) fail "알 수 없는 옵션입니다. --help를 확인하세요." ;;
     esac
     shift
@@ -99,7 +95,7 @@ parse_options() {
 }
 require_commands() {
   local cmd
-  for cmd in uname mkdir mktemp curl shasum awk tar cp mv chmod rm basename dirname cat; do
+  for cmd in uname mkdir mktemp curl plutil shasum awk tar cp mv chmod rm basename dirname cat; do
     command -v "${cmd}" >/dev/null 2>&1 || fail "필수 명령을 찾을 수 없습니다: ${cmd}"
   done
 }
@@ -130,9 +126,43 @@ install_bridge() {
   chmod 700 "${__stage}/risu-bridge"
   "${__stage}/risu-bridge" --version
 }
+resolve_codex() {
+  __phase='최신 Codex 안정 릴리스 확인'
+  local metadata="${__stage}/codex-release.json" tag index=0 name digest
+  fetch 'https://api.github.com/repos/openai/codex/releases/latest' "${metadata}"
+  tag=$(plutil -extract tag_name raw -o - "${metadata}")
+  [[ "${tag}" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Codex 안정 릴리스 태그가 올바르지 않습니다.'
+  [[ "$(plutil -extract prerelease raw -o - "${metadata}")" = false ]] || fail 'Codex 사전 릴리스는 설치하지 않습니다.'
+  [[ "$(plutil -extract draft raw -o - "${metadata}")" = false ]] || fail 'Codex 초안 릴리스는 설치하지 않습니다.'
+  __codex_version=${tag#rust-v}
+  __codex_sha=''
+  while name=$(plutil -extract "assets.${index}.name" raw -o - "${metadata}" 2>/dev/null); do
+    if [[ "${name}" = "codex-${__target}.tar.gz" ]]; then
+      digest=$(plutil -extract "assets.${index}.digest" raw -o - "${metadata}")
+      [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Codex SHA-256 정보가 없습니다.'
+      __codex_sha=${digest#sha256:}
+      break
+    fi
+    index=$((index + 1))
+  done
+  [[ -n "${__codex_sha}" ]] || fail '현재 Mac용 Codex 릴리스 파일을 찾을 수 없습니다.'
+}
 install_codex() {
+  local existing
+  existing=$(type -P codex || true)
+  if [[ -n "${existing}" ]]; then
+    # Preserve the PATH entry (including Homebrew's symlink), not its versioned target.
+    existing="$(cd -- "$(dirname -- "${existing}")" && pwd)/$(basename -- "${existing}")"
+    if ! CODEX_HOME="${__install_dir}/data/codex" "${existing}" --version; then
+      fail 'PATH의 Codex를 실행할 수 없습니다. 기존 Codex 설치를 복구한 뒤 다시 실행하세요.'
+    fi
+    printf '%s\n' "${existing}" > "${__stage}/codex-path"
+    log INFO 6 "기존 Codex 사용: ${existing} (브리지 자동 업데이트 제외)"
+    return
+  fi
+  resolve_codex
   __phase='Codex 다운로드·검증'
-  local cache="${__install_dir}/bin/codex-${__target}.tar.gz"
+  local cache="${__install_dir}/bin/codex-${__codex_version}-${__target}.tar.gz"
   local actual=''
   log INFO 6 "공식 Codex ${__codex_version} 네이티브 실행 파일 준비 중…"
   if [[ -f "${cache}" && "${BRIDGE_FORCE_DOWNLOAD:-0}" != 1 ]]; then
@@ -154,6 +184,62 @@ install_codex() {
   mv -f -- "${__cache_temp}" "${cache}"
   __cache_temp=''
 }
+publish_updater() {
+  # Embed the checked-in implementation; startup never executes downloaded scripts.
+  local updater="${__stage}/update-codex.sh"
+  cat > "${updater}" <<'SH'
+#!/bin/bash
+set -eEuo pipefail
+umask 077
+install_dir=$1
+release_dir=$2
+__install_dir=$install_dir
+__target=$3
+__phase='Codex 자동 업데이트'
+lock="$install_dir/bin/.codex-update-lock"
+mkdir "$lock" 2>/dev/null || exit 0
+__stage=''
+cleanup_update() {
+  [[ -z "$__stage" ]] || rm -rf -- "$__stage"
+  rmdir "$lock"
+}
+trap cleanup_update EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+__stage=$(mktemp -d "$install_dir/releases/.codex-update.XXXXXX")
+fail() { printf '[WARN] %s\n' "$*" >&2; exit 1; }
+SH
+  declare -f checksum resolve_codex >> "${updater}"
+  cat >> "${updater}" <<'SH'
+fetch() {
+  local limit=180
+  [[ "$1" != 'https://api.github.com/repos/openai/codex/releases/latest' ]] || limit=10
+  curl --fail --silent --show-error --location --connect-timeout 5 --max-time "$limit" \
+    --proto '=https' --proto-redir '=https' --tlsv1.2 "$1" -o "$2"
+}
+resolve_codex
+current="$install_dir/releases/$release_dir"
+if [[ -f "$current/codex-version" && "$(cat "$current/codex-version")" = "$__codex_version" ]]; then exit 0; fi
+printf '[INFO] Codex %s 업데이트 중…\n' "$__codex_version" >&2
+fetch "https://github.com/openai/codex/releases/download/rust-v${__codex_version}/codex-${__target}.tar.gz" "$__stage/codex.tar.gz"
+[[ "$(checksum "$__stage/codex.tar.gz")" = "$__codex_sha" ]] || fail 'Codex checksum 불일치'
+tar -xzf "$__stage/codex.tar.gz" -C "$__stage" "codex-${__target}"
+chmod 700 "$__stage/codex-${__target}"
+[[ "$(CODEX_HOME="$install_dir/data/codex" "$__stage/codex-${__target}" --version)" = "codex-cli $__codex_version" ]] || fail 'Codex 실행·버전 검증 실패'
+printf '%s\n' "$__codex_version" > "$__stage/codex-version"
+# Same filesystem rename: running processes retain their executable; new starts use the new binary.
+mv -f -- "$__stage/codex-${__target}" "$current/codex"
+mv -f -- "$__stage/codex-version" "$current/codex-version"
+# Only installer-owned compressed copies; never touch credentials or external Codex installs.
+rm -f -- "$current/codex.tar.gz"
+for cached in "$install_dir"/bin/codex-*.tar.gz; do
+  [[ ! -f "$cached" ]] || rm -f -- "$cached"
+done
+printf '[INFO] Codex 업데이트 완료. 이전 실행 파일과 다운로드 캐시를 정리했습니다.\n' >&2
+SH
+  chmod 700 "${updater}"
+  printf '%s\n' "${__codex_version}" > "${__stage}/codex-version"
+}
 publish_launcher() {
   __phase='실행 명령 설치'
   local release_dir
@@ -167,8 +253,25 @@ export BRIDGE_DATA_DIR=${BRIDGE_DATA_DIR:-"$install_dir/data"}
 SH
   # mktemp basename only; never interpolate user-provided paths as shell code.
   printf 'release_dir=%s\n' "${release_dir}" >> "${__launcher}"
+  printf 'codex_target=%s\n' "${__target}" >> "${__launcher}"
   cat >> "${__launcher}" <<'SH'
-export BRIDGE_CODEX_BIN="$install_dir/releases/$release_dir/codex"
+if [ -f "$install_dir/releases/$release_dir/codex-path" ]; then
+  BRIDGE_CODEX_BIN=$(cat "$install_dir/releases/$release_dir/codex-path")
+  if [ ! -x "$BRIDGE_CODEX_BIN" ]; then
+    printf '[ERROR] 기존 Codex를 찾을 수 없습니다. Codex 설치를 복구하거나 브리지 설치 명령을 다시 실행하세요.\n' >&2
+    exit 1
+  fi
+else
+case "${1:-}" in
+  --help|-h|--version|--stop) ;;
+  *)
+    if ! /bin/bash "$install_dir/releases/$release_dir/update-codex.sh" "$install_dir" "$release_dir" "$codex_target"; then
+      printf '[WARN] Codex 업데이트에 실패해 기존 버전으로 실행합니다.\n' >&2
+    fi ;;
+esac
+BRIDGE_CODEX_BIN="$install_dir/releases/$release_dir/codex"
+fi
+export BRIDGE_CODEX_BIN
 exec "$install_dir/releases/$release_dir/risu-bridge" "$@"
 SH
   chmod 700 "${__launcher}"
@@ -184,8 +287,8 @@ main() {
   require_commands
   [[ "$(uname -s)" = Darwin ]] || fail '현재 설치판은 macOS만 지원합니다.'
   case "$(uname -m)" in
-    arm64) __arch=arm64; __target=aarch64-apple-darwin; __codex_sha=8cdecd0b8ebe23f20eb373010fd91e9517977e840b68941ef6a646b409cb32e1 ;;
-    x86_64) __arch=amd64; __target=x86_64-apple-darwin; __codex_sha=668309c7d7cc1ebee5f9b4485739f92fd5556b0805bd9f49a3479302b5f68adc ;;
+    arm64) __arch=arm64; __target=aarch64-apple-darwin ;;
+    x86_64) __arch=amd64; __target=x86_64-apple-darwin ;;
     *) fail '지원하지 않는 CPU입니다.' ;;
   esac
   __install_dir=${BRIDGE_INSTALL_DIR:-"${HOME:?HOME이 필요합니다.}/.local/share/risu-subscription-bridge"}
@@ -196,6 +299,7 @@ main() {
   log INFO 6 "Risu Subscription Bridge · Go 설치: ${__install_dir}"
   install_bridge
   install_codex
+  if [[ ! -f "${__stage}/codex-path" ]]; then publish_updater; fi
   publish_launcher
   log INFO 6 '준비 완료. 기존 브리지가 실행 중이면 3번(재시작)을 선택하세요.'
   if [[ "${__install_only}" = 1 ]]; then return 0; fi

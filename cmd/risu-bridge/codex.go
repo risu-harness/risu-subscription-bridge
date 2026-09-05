@@ -312,7 +312,13 @@ func (c *codex) generate(ctx context.Context, r chatRequest, s settings, cwd str
 		delete(c.events, tid)
 		c.mu.Unlock()
 	}()
-	p = map[string]any{"threadId": tid, "input": []any{map[string]any{"type": "text", "text": promptFor(r.Messages), "text_elements": []any{}}}}
+	items, input := structuredInput(r.Messages)
+	if len(items) > 0 {
+		if err = c.rpc(ctx, "thread/inject_items", map[string]any{"threadId": tid, "items": items}, nil); err != nil {
+			return result, err
+		}
+	}
+	p = map[string]any{"threadId": tid, "input": []any{map[string]any{"type": "text", "text": input, "text_elements": []any{}}}}
 	if s.Effort != "" {
 		p["effort"] = s.Effort
 	}
