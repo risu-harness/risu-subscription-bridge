@@ -6,6 +6,7 @@ import {existsSync} from 'node:fs';
 import {Codex} from './codex.mjs';
 import {CodexExec} from './exec.mjs';
 import {spawn} from 'node:child_process';
+import {Settings, configuredAdapter} from './settings.mjs';
 import {createBridge} from './server.mjs';
 import {acquireInstance} from './instance.mjs';
 
@@ -32,11 +33,12 @@ const env = {...process.env, CODEX_HOME: home};
 for (const k of ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORG_ID', 'OPENAI_ORGANIZATION', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN']) delete env[k];
 const control = new Codex({binary, env, cwd});
 await control.init();
-const adapter = backend === 'exec' ? new CodexExec({binary, env, cwd, control}) : control;
-if (backend === 'exec') await adapter.init();
+const settings = new Settings(runtime,backend); await settings.init();
+const cli = new CodexExec({binary,env,cwd,control}); await cli.init();
+const adapter = configuredAdapter(control,cli,settings);
 const port = Number(process.env.BRIDGE_PORT || 8787);
 const origins = process.env.BRIDGE_ALLOWED_ORIGINS?.split(',').map(x => x.trim()).filter(Boolean);
-const server = createBridge({adapter, token, port, runtime, shutdown: stop, ...(origins ? {origins} : {})});
+const server = createBridge({adapter, token, port, runtime, settings, shutdown: stop, ...(origins ? {origins} : {})});
 server.on('error', e => { console.error('Bridge listener failed:', e.code); adapter.shutdown(); instanceGuard.close(); process.exitCode = 1; });
 server.listen(port, '127.0.0.1', () => {
   const setupURL = `http://127.0.0.1:${port}/#key=${token}`;

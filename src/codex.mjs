@@ -1,3 +1,4 @@
+import {validateEffort} from './settings.mjs';
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {EventEmitter} from 'node:events';
@@ -59,8 +60,9 @@ export class Codex extends EventEmitter {
     const available = await this.models();
     const chosen = request.model === 'subscription-default' ? available.find(m => m.isDefault) ?? available[0] : available.find(m => m.model === request.model || m.id === request.model);
     if (!chosen) throw new BridgeError('Choose a model returned by /v1/models.', 400, 'unknown_model');
+    validateEffort(chosen,request.effort);
     const model = chosen.model ?? chosen.id;
-    const {thread} = await this.rpc('thread/start', {model, cwd: this.cwd, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', baseInstructions: BASE});
+    const {thread} = await this.rpc('thread/start', {model, cwd: this.cwd, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', baseInstructions: BASE+(request.instructions?'\n\n'+request.instructions:''), ...(request.verbosity?{config:{model_verbosity:request.verbosity}}:{})});
     let turnId, timer, usage, settled = false, firstTokenMs = null;
     let resolveDone, rejectDone;
     const done = new Promise((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
@@ -92,7 +94,7 @@ export class Codex extends EventEmitter {
     try {
       if (signal.aborted) abort();
       else {
-        const r = await this.rpc('turn/start', {threadId: thread.id, input: [{type: 'text', text: promptFor(request.messages), text_elements: []}]});
+        const r = await this.rpc('turn/start', {threadId: thread.id, ...(request.effort?{effort:request.effort}:{}), input: [{type: 'text', text: promptFor(request.messages), text_elements: []}]});
         turnId = r.turn.id; if (signal.aborted || settled && r.turn.status === 'inProgress') interrupt();
       }
       await done;

@@ -10,6 +10,26 @@ async function call(path, options = {}) {
   if (r.status === 401 && data.error?.code === 'unauthorized') throw Error('로컬 연결 키가 맞지 않습니다. 브리지 실행 터미널의 Setup 주소(#key= 포함)를 다시 열어 주세요.');
   if (!r.ok) throw Error(data.error?.message || '연결 실패'); return data;
 }
+let settingsLoaded=false, catalog=[];
+function efforts(value='') {
+ const chosen=$('models').value==='subscription-default' ? catalog.find(m=>m.isDefault)||catalog[0] : catalog.find(m=>(m.model||m.id)===$('models').value);
+ $('effort').replaceChildren(new Option('모델 기본값',''),...(chosen?.supportedReasoningEfforts||[]).map(e=>new Option(e.reasoningEffort,e.reasoningEffort)));
+ $('effort').value=value;
+ if($('effort').selectedIndex<0)$('effort').value='';
+}
+async function loadSettings() {
+ const r=await call('/internal/settings');catalog=r.models;
+ $('models').replaceChildren(new Option('Codex 기본 모델','subscription-default'),...catalog.map(m=>new Option(m.displayName||m.model||m.id,m.model||m.id)));
+ for(const key of ['backend','models','verbosity','instructions'])$(key).value=r.settings[key==='models'?'model':key];
+ efforts(r.settings.effort);settingsLoaded=true;
+}
+$('models').onchange=()=>efforts();
+$('save-settings').onclick=async()=>{
+ $('save-settings').disabled=true;
+ try {await call('/internal/settings',{method:'POST',body:JSON.stringify({backend:$('backend').value,model:$('models').value,effort:$('effort').value,verbosity:$('verbosity').value,instructions:$('instructions').value})});$('saved').textContent='저장됨 · 다음 요청부터 적용';await refresh();}
+ catch(e){$('error').textContent=e.message;$('saved').textContent='저장하지 못했습니다.';}
+ finally{$('save-settings').disabled=false;}
+};
 async function refresh() {
   try {
     sessionStorage.setItem('bridge-key', $('token').value);
@@ -17,9 +37,7 @@ async function refresh() {
     $('delivery').textContent = s.adapter === 'codex-exec' ? 'CLI wrapper · 요청마다 독립 실행. 답변이 완성되면 표시됩니다(토큰 실시간 스트리밍 아님).' : 'App Server · 생성 중 텍스트를 순차 표시합니다.';
     $('status').textContent = s.account.connected ? '● ChatGPT 연결됨 · ' + (s.account.plan || '구독') : '○ ChatGPT 로그인이 필요합니다';
     $('diagnostics').textContent = JSON.stringify(s, null, 2); $('error').textContent = '';
-    if (s.account.connected && $('models').options.length <= 1) {
-      const m = await call('/v1/models'); $('models').replaceChildren(...m.data.map(x => new Option(x.id, x.id)));
-    }
+    if (s.account.connected && !settingsLoaded) await loadSettings();
   } catch (e) { $('status').textContent = '○ 로컬 브리지 연결 확인이 필요합니다'; $('error').textContent = e.message; }
 }
 $('refresh').onclick = refresh;
@@ -32,7 +50,7 @@ let controller;
 $('stop').onclick = () => controller?.abort();
 $('test').onclick = async () => {
   controller = new AbortController(); $('test').disabled = true; $('stop').disabled = false; $('result').textContent = '응답 기다리는 중…';
-  try { const r = await call('/v1/chat/completions', {method: 'POST', signal: controller.signal, body: JSON.stringify({model: $('models').value, messages: [{role: 'user', content: '한국어로 연결 성공이라고만 답해 주세요.'}], stream: false})}); $('result').textContent = r.choices[0].message.content; }
+  try { const r = await call('/v1/chat/completions', {method: 'POST', signal: controller.signal, body: JSON.stringify({model: 'subscription-default', messages: [{role: 'user', content: '한국어로 연결 성공이라고만 답해 주세요.'}], stream: false})}); $('result').textContent = r.choices[0].message.content; }
   catch (e) { $('result').textContent = e.name === 'AbortError' ? '중단했습니다.' : e.message; }
   finally { $('test').disabled = false; $('stop').disabled = true; refresh(); }
 };

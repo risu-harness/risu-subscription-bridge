@@ -64,3 +64,12 @@ test('cleanup RPC failure stops harness rather than silently accumulating thread
   await assert.rejects(a.generate(request,{signal:new AbortController().signal,delta:()=>{}}),e=>e.code==='cleanup_failed');
   assert.equal(shutdown,true);
 });
+
+test('App Server applies effort to turn and verbosity to fresh thread',async()=>{
+ const a=new FakeCodex(async a=>a.event('turn/completed',{turn:{id:'turn1',status:'completed'}}));
+ a.models=async()=>[{model:'actual-model',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'low'}]}];
+ await a.generate({...request,effort:'low',verbosity:'high',instructions:'한국어 대화'},{signal:new AbortController().signal,delta(){}});
+ assert.equal(a.calls.find(x=>x.method==='turn/start').params.effort,'low');
+ assert.equal(a.calls[0].params.config.model_verbosity,'high');
+ assert.match(a.calls[0].params.baseInstructions,/한국어 대화/);
+});

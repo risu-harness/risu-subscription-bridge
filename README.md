@@ -124,3 +124,9 @@ P0: 실제 Risu request/응답 확인 및 App Server 한 턴 → 동일 payload�
 파이프 설치에서도 `/dev/tty`로 선택을 읽는다. 터미널이 없는 자동 실행은 재사용이 기본이다. 자동화에서는 `BRIDGE_ACTION=reuse|stop|restart`를 지정할 수 있다. 구버전 종료 API가 없는 Mac 브리지는 인증 확인 후 해당 설치 releases 폴더에서 실행한 리스너만 SIGTERM으로 종료한다.
 
 재사용 시에도 저장된 키가 포함된 `http://127.0.0.1:포트/#key=...` 설정 링크를 터미널에 표시한다. 자동 브라우저 열기를 꺼도 링크는 표시된다.
+
+## 브라우저 생성 설정
+
+설정 페이지에서 실행 방식(CLI/App Server), 기본 모델, 추론 강도, 답변 상세도, 추가 대화 지시문을 저장한다. `data/generation-settings.json`에 보관하며 다음 요청부터 적용된다. 실행 중인 응답이 있으면 저장을 거절한다. Risu 요청 모델이 `subscription-default`일 때 저장 모델을 사용하고, 명시한 모델은 우선한다. 추론 강도는 모델 목록에서 광고한 값만 허용한다. 상세도는 모델 지원에 따라 적용된다.
+
+CLI는 `-c model_reasoning_effort`, `-c model_verbosity`와 지시문 파일에 전달한다. App Server는 새 `thread/start`의 `config.model_verbosity`와 `baseInstructions`, `turn/start.effort`에 전달한다. 두 경로 모두 공통 BASE 지시문에 사용자 추가 지시문을 붙인다. 설정은 인증된 로컬 `/internal/settings`에서만 읽고 쓸 수 있다. 브라우저 저장값이 존재하면 최초 실행 시 backend 환경 변수보다 우선한다.

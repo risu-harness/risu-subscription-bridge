@@ -2,18 +2,19 @@ import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {validateEffort} from './settings.mjs';
 import {BASE, BridgeError, promptFor} from './protocol.mjs';
 
 // Generation is exclusively codex exec. The existing control object only handles
 // login/account/model discovery; no character transcript is sent to App Server.
 export class CodexExec {
-  constructor({binary, env, cwd, control, spawnProcess = spawn, timeoutMs = 180000}) {
-    Object.assign(this, {binary, env, cwd, control, spawnProcess, timeoutMs});
+  constructor({binary, env, cwd, control, spawnProcess = spawn, timeoutMs = 180000, writeInstructions = writeFile}) {
+    Object.assign(this, {binary, env, cwd, control, spawnProcess, timeoutMs, writeInstructions});
     this.name = 'codex-exec'; this.delivery = 'completed-message'; this.children = new Set();
     this.instructionsPath = join(env.CODEX_HOME, 'bridge-instructions.txt');
   }
   get alive() { return this.control.alive; }
-  async init() { await writeFile(this.instructionsPath, BASE, {mode: 0o600}); }
+  async init() { await this.writeInstructions(this.instructionsPath, BASE, {mode: 0o600}); }
   account() { return this.control.account(); }
   models() { return this.control.models(); }
   login() { return this.control.login(); }
@@ -24,9 +25,13 @@ export class CodexExec {
     const chosen = request.model === 'subscription-default' ? models.find(m => m.isDefault) ?? models[0] : models.find(m => m.model === request.model || m.id === request.model);
     if (!chosen) throw new BridgeError('Choose a model returned by /v1/models.', 400, 'unknown_model');
     if (signal.aborted) throw new BridgeError('Cancelled.', 499, 'cancelled');
+    validateEffort(chosen,request.effort);
+    await this.writeInstructions(this.instructionsPath,BASE+(request.instructions?'\n\n'+request.instructions:''),{mode:0o600});
     const model = chosen.model ?? chosen.id;
     const args = ['exec', '--ephemeral', '--skip-git-repo-check', '--json', '-s', 'read-only', '-m', model,
-      '-c', `model_instructions_file=${JSON.stringify(this.instructionsPath)}`, '-'];
+      '-c', `model_instructions_file=${JSON.stringify(this.instructionsPath)}`,
+      ...(request.effort?['-c',`model_reasoning_effort=${JSON.stringify(request.effort)}`]:[]),
+      ...(request.verbosity?['-c',`model_verbosity=${JSON.stringify(request.verbosity)}`]:[]), '-'];
     const startedAt = performance.now();
     return new Promise((resolve, reject) => {
       let completed = false, failure, usage, firstMessageMs = null, processSpawnMs = null, firstEventMs = null, killTimer;
