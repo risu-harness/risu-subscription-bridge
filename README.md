@@ -84,3 +84,5 @@ P0: 실제 Risu request/응답 확인 및 App Server 한 턴 → 동일 payload�
 출처: [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [exec events](https://github.com/openai/codex/blob/main/codex-rs/exec/src/exec_events.rs), [exec JSONL 변환](https://github.com/openai/codex/blob/main/codex-rs/exec/src/event_processor_with_jsonl_output.rs), [App Server](https://learn.chatgpt.com/docs/app-server), [Risu OpenAI request source](https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/request/openAI/requests.ts). 로컬 설치된 Codex 0.153.0의 help와 generate-json-schema를 함께 확인했다.
 
 파이프 설치에서도 `/dev/tty`로 선택을 읽는다. 터미널이 없는 자동 실행은 재사용이 기본이다. 자동화에서는 `BRIDGE_ACTION=reuse|stop|restart`를 지정할 수 있다. 구버전 종료 API가 없는 Mac 브리지는 인증 확인 후 해당 설치 releases 폴더에서 실행한 리스너만 SIGTERM으로 종료한다.
+
+재사용 시에도 저장된 키가 포함된 `http://127.0.0.1:포트/#key=...` 설정 링크를 터미널에 표시한다. 자동 브라우저 열기를 꺼도 링크는 표시된다.

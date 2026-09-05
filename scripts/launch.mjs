@@ -12,10 +12,11 @@ const ports=[...new Set([requested,...Array.from({length:13},(_,i)=>8787+i)])];
 async function reuse() {
   const existing=await findInstance(runtime,ports);
   if(!existing)return false;
-  console.log(`이미 실행 중인 브리지를 사용합니다: http://127.0.0.1:${existing.port}/`);
+  const setupURL=`http://127.0.0.1:${existing.port}/#key=${existing.token}`;
+  console.log(`이미 실행 중인 브리지를 사용합니다: http://127.0.0.1:${existing.port}/\n설정 페이지: ${setupURL}\n이 링크에는 로컬 연결 키가 포함되어 있습니다.`);
   if(process.env.BRIDGE_OPEN_BROWSER!=='0'&&process.platform==='darwin') {
-    const opener=spawn('/usr/bin/open',[`http://127.0.0.1:${existing.port}/#key=${existing.token}`],{stdio:'ignore'});
-    opener.on('error',()=>console.error('브라우저를 열지 못했습니다. 기존 설정 페이지를 사용하세요.'));
+    const opener=spawn('/usr/bin/open',[setupURL],{stdio:'ignore'});
+    opener.on('error',()=>console.error('브라우저를 열지 못했습니다. 위 설정 페이지 링크로 접속하세요.'));
   }
   return true;
 }
