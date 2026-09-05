@@ -68,14 +68,18 @@ fi
 
 # Store absolute paths as JSON, never interpolate them as shell source.
 "$node_bin" --input-type=module - "$install_dir" "$stage" "$node_bin" "$codex_bin" <<'JS'
-import {writeFile,chmod} from 'node:fs/promises';
+import {writeFile,chmod,rename} from 'node:fs/promises';
 import {join} from 'node:path';
 const [dir,source,node,codex]=process.argv.slice(2);
-await writeFile(join(dir,'install.json'),JSON.stringify({source,node,codex},null,2),{mode:0o600});
+const configTemp=join(dir,`install.${process.pid}.json`);
+await writeFile(configTemp,JSON.stringify({source,node,codex},null,2),{mode:0o600});
+await rename(configTemp,join(dir,'install.json'));
 const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
-await writeFile(join(dir,'bin','risu-bridge'),'#!/bin/sh\nexec '+quote(node)+' '+quote(join(source,'scripts','launch.mjs'))+' '+quote(dir)+' "$@"\n',{mode:0o700});
-await chmod(join(dir,'bin','risu-bridge'),0o700);
+const launcherTemp=join(dir,'bin',`risu-bridge.${process.pid}`);
+await writeFile(launcherTemp,'#!/bin/sh\nexec '+quote(node)+' '+quote(join(source,'scripts','launch.mjs'))+' '+quote(dir)+' "$@"\n',{mode:0o700});
+await chmod(launcherTemp,0o700);
+await rename(launcherTemp,join(dir,'bin','risu-bridge'));
 JS
-printf '\n설치 완료. 다음에도 실행하려면:\n  sh "%s/bin/risu-bridge"\n터미널을 유지하세요. Ctrl+C로 종료합니다.\n' "$install_dir"
+printf '\n준비 완료. 다음에도 같은 curl 명령을 사용하세요. 실행 중이면 기존 브리지를 다시 엽니다.\n'
 if [ "${BRIDGE_INSTALL_ONLY:-0}" = 1 ]; then exit 0; fi
 exec sh "$install_dir/bin/risu-bridge"

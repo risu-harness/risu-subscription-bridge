@@ -25,11 +25,9 @@ curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-brid
 
 설치 위치는 `~/.local/share/risu-subscription-bridge`다. `releases/`는 설치별 소스, `data/`는 인증·로컬 상태, `bin/risu-bridge`는 실행 명령이다. 재설치해도 data는 보존한다. 사용 중인 브리지를 자동 종료하거나 설정을 바꾸지 않으며, 시작할 때 8787~8799 중 사용 가능한 포트를 선택한다. Risu에 설정 페이지의 실제 포트를 넣어야 한다.
 
-다음 실행:
+**처음 설치할 때나 다시 실행할 때나 위의 curl 명령 하나를 사용한다.** 실행 중인 동일 설치의 브리지가 있으면 로컬 키와 데이터 경로를 확인하고 기존 포트의 설정 페이지를 연다. 없다면 시작한다. 새 소스는 다음 프로세스 시작부터 적용되며 실행 중인 대화는 중단하지 않는다.
 
-```sh
-sh "$HOME/.local/share/risu-subscription-bridge/bin/risu-bridge"
-```
+동시 실행은 브리지 프로세스가 소유한 OS 잠금으로 제한한다. 비정상 종료 시 잠금은 OS가 해제한다. 다른 설치 폴더는 독립 인스턴스로 취급한다. 포트가 다른 프로그램에 사용 중일 때만 첫 시작 포트를 바꾼다.
 
 설치만 하려면 `BRIDGE_INSTALL_ONLY=1`, 별도 위치는 `BRIDGE_INSTALL_DIR=/absolute/path`, 다운로드 경로 시험은 `BRIDGE_FORCE_DOWNLOAD=1`, 브라우저 자동 열기 제외는 `BRIDGE_OPEN_BROWSER=0`을 설치 실행의 환경 변수로 전달한다. 실행 중인 프로세스를 Ctrl+C로 종료한 후 설치 폴더를 Finder에서 휴지통으로 옮기면 제거된다(인증·상태도 함께 삭제되므로 필요한 자료는 먼저 보관).
 

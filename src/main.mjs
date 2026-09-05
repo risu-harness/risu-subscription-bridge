@@ -7,9 +7,13 @@ import {Codex} from './codex.mjs';
 import {CodexExec} from './exec.mjs';
 import {spawn} from 'node:child_process';
 import {createBridge} from './server.mjs';
+import {acquireInstance} from './instance.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const runtime = resolve(process.env.BRIDGE_DATA_DIR || join(root, '.runtime'));
+let instanceGuard;
+try { instanceGuard = await acquireInstance(runtime); }
+catch (e) { if (e.code === 'EADDRINUSE') process.exit(75); throw e; }
 const home = join(runtime, 'codex'), cwd = join(runtime, 'work');
 await mkdir(home, {recursive: true, mode: 0o700}); await mkdir(cwd, {recursive: true, mode: 0o700}); await chmod(runtime, 0o700);
 const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex';
@@ -31,7 +35,7 @@ if (backend === 'exec') await adapter.init();
 const port = Number(process.env.BRIDGE_PORT || 8787);
 const origins = process.env.BRIDGE_ALLOWED_ORIGINS?.split(',').map(x => x.trim()).filter(Boolean);
 const server = createBridge({adapter, token, port, runtime, ...(origins ? {origins} : {})});
-server.on('error', e => { console.error('Bridge listener failed:', e.code); adapter.shutdown(); process.exitCode = 1; });
+server.on('error', e => { console.error('Bridge listener failed:', e.code); adapter.shutdown(); instanceGuard.close(); process.exitCode = 1; });
 server.listen(port, '127.0.0.1', () => {
   const setupURL = `http://127.0.0.1:${port}/#key=${token}`;
   console.log(`Risu bridge listening on http://127.0.0.1:${port}\nSetup: ${setupURL}\nNo prompts or credentials are written to bridge logs. The setup URL contains a local-only access key.`);
@@ -40,4 +44,4 @@ server.listen(port, '127.0.0.1', () => {
     opener.once('error', () => console.error('브라우저를 열 수 없습니다. 위 Setup 주소를 직접 열어 주세요.'));
   }
 });
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(); server.closeAllConnections(); adapter.shutdown(); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(); server.closeAllConnections(); adapter.shutdown(); instanceGuard.close(); });
