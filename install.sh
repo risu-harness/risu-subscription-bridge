@@ -10,7 +10,7 @@ set -o pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly __release='v0.2.2'
+readonly __release='v0.2.3'
 __codex_version=''
 __stage=''
 __launcher=''
@@ -64,10 +64,11 @@ usage() {
   cat <<'HELP'
 Risu Subscription Bridge 설치
   curl -fsSL https://raw.githubusercontent.com/risu-harness/risu-subscription-bridge/main/install.sh | sh
-  sh install.sh [--install-only] [--restart]
+  sh install.sh [--install-only] [--restart] [--debug]
 
   --install-only  설치만 하고 실행하지 않음
   --restart       실행 중인 브리지를 종료 후 재시작 (진행 중 응답 중단)
+  --debug         최신 ChatGPT 요청 전문을 로컬 audit 파일에 저장
   --version       설치할 브리지 릴리스 표시
   --help, -h      도움말
 
@@ -88,6 +89,7 @@ parse_options() {
       --version) printf '%s\n' "${__release}"; exit 0 ;;
       --install-only) __install_only=1 ;;
       --restart) __bridge_args+=(--restart) ;;
+      --debug) __bridge_args+=(--debug) ;;
       *) fail "알 수 없는 옵션입니다. --help를 확인하세요." ;;
     esac
     shift

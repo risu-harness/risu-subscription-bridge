@@ -157,6 +157,9 @@ type account struct {
 	Connected bool   `json:"connected"`
 	Type      string `json:"type"`
 	Plan      string `json:"plan"`
+	Available *bool  `json:"available,omitempty"`
+	LoggingIn bool   `json:"loggingIn,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 func (c *codex) account(ctx context.Context) (account, error) {
@@ -169,7 +172,7 @@ func (c *codex) account(ctx context.Context) (account, error) {
 	err := c.rpc(ctx, "account/read", map[string]bool{"refreshToken": false}, &r)
 	a := account{}
 	if r.Account != nil {
-		a = account{r.Account.Type == "chatgpt", r.Account.Type, r.Account.Plan}
+		a = account{Connected: r.Account.Type == "chatgpt", Type: r.Account.Type, Plan: r.Account.Plan}
 	}
 	return a, err
 }

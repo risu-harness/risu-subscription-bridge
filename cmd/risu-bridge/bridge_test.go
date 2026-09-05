@@ -175,6 +175,10 @@ func TestBusyAndCancellation(t *testing.T) {
 	b.release()
 }
 func TestMain(m *testing.M) {
+	if os.Getenv("RISU_FAKE_GEMINI") == "1" {
+		fakeGeminiMain()
+		os.Exit(0)
+	}
 	if os.Getenv("RISU_FAKE_CODEX") == "1" {
 		fakeCodexProcess()
 		os.Exit(0)

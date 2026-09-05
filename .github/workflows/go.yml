@@ -19,9 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check sh entry points and embedded Bash bodies
         run: |
-          shellcheck -s sh install.sh scripts/build-release.sh
+          shellcheck -s sh install.sh scripts/build-release.sh scripts/install-gemini.sh
           awk '/^set -o errexit/{body=1} /^RISU_INSTALL_BASH$/{body=0} body' install.sh > /tmp/install.bash
           awk '/^set -o errexit/{body=1} /^RISU_BUILD_BASH$/{body=0} body' scripts/build-release.sh > /tmp/build.bash
-          shellcheck -s bash /tmp/install.bash /tmp/build.bash
+          awk '/^set -eEuo/{body=1} /^RISU_GEMINI_BASH$/{body=0} body' scripts/install-gemini.sh > /tmp/gemini.bash
+          shellcheck -s bash /tmp/install.bash /tmp/build.bash /tmp/gemini.bash
+          bash -n /tmp/gemini.bash
           bash -n /tmp/install.bash
           bash -n /tmp/build.bash

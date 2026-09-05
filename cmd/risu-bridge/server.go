@@ -40,10 +40,13 @@ type metrics struct {
 }
 type bridge struct {
 	api                       backend
+	providers                 map[string]backend
+	provider                  string
 	token, port, runtime, cwd string
 	origins                   []string
 	mu                        sync.Mutex
 	busy                      bool
+	debug                     bool
 	settings                  settings
 	metrics                   metrics
 	stop                      func()
@@ -103,6 +106,7 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
+	api, provider := b.current()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Host != "127.0.0.1:"+b.port && r.Host != "localhost:"+b.port {
@@ -140,7 +144,7 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if r.Method == "GET" && path == "/healthz" {
-		writeJSON(w, 200, map[string]any{"ok": b.api.alive(), "version": version, "implementation": "go"})
+		writeJSON(w, 200, map[string]any{"ok": api.alive(), "version": version, "implementation": "go"})
 		return nil
 	}
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+b.token)) != 1 {
@@ -151,20 +155,38 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx := r.Context()
 	switch {
+	case r.Method == "POST" && path == "/internal/provider":
+		if !b.claim() {
+			return problem(409, "bridge_busy", "응답이 끝난 뒤 AI 연결을 변경하세요.")
+		}
+		defer b.release()
+		raw, err := readJSON(w, r)
+		if err != nil {
+			return err
+		}
+		var p string
+		if len(raw) != 1 || json.Unmarshal(raw["provider"], &p) != nil {
+			return bad("provider is required.")
+		}
+		if err = b.selectProvider(p); err != nil {
+			return err
+		}
+		writeJSON(w, 200, map[string]string{"provider": p})
+		return nil
 	case r.Method == "GET" && path == "/internal/status":
-		a, err := b.api.account(ctx)
+		a, err := api.account(ctx)
 		if err != nil {
 			return err
 		}
 		b.mu.Lock()
-		v := map[string]any{"account": a, "metrics": b.metrics, "busy": b.busy, "runtime": b.runtime, "version": version}
+		v := map[string]any{"account": a, "metrics": b.metrics, "busy": b.busy, "runtime": b.runtime, "version": version, "provider": provider}
 		encoded := marshal(v)
 		b.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(encoded)
 		return nil
 	case r.Method == "GET" && path == "/internal/settings":
-		ms, err := b.api.models(ctx)
+		ms, err := api.models(ctx)
 		if err != nil {
 			return err
 		}
@@ -178,6 +200,7 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 			return problem(409, "bridge_busy", "응답이 끝난 뒤 설정을 저장하세요.")
 		}
 		defer b.release()
+		api, provider = b.current()
 		raw, err := readJSON(w, r)
 		if err != nil {
 			return err
@@ -197,14 +220,17 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 		if !contains([]string{"", "low", "medium", "high"}, s.Verbosity) || len([]rune(s.Instructions)) > 16000 {
 			return bad("Invalid settings.")
 		}
-		ms, err := b.api.models(ctx)
+		if provider == "gemini" && (s.Effort != "" || s.Verbosity != "") {
+			return bad("Gemini에서는 추론 강도와 답변 상세도를 기본값으로 두세요.")
+		}
+		ms, err := api.models(ctx)
 		if err != nil {
 			return err
 		}
 		if _, err = chooseModel(ms, s.Model, s.Effort); err != nil {
 			return err
 		}
-		if err = atomicWrite(filepath.Join(b.runtime, "generation-settings.json"), marshal(s)); err != nil {
+		if err = atomicWrite(b.settingsPath(provider), marshal(s)); err != nil {
 			return err
 		}
 		b.mu.Lock()
@@ -213,11 +239,16 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 		writeJSON(w, 200, map[string]any{"settings": s})
 		return nil
 	case r.Method == "POST" && path == "/internal/login":
+		if !b.claim() {
+			return problem(409, "bridge_busy", "응답이 끝난 뒤 로그인하세요.")
+		}
+		defer b.release()
+		api, _ = b.current()
 		if _, err := readJSON(w, r); err != nil {
 			return err
 		}
 		var result any
-		if err := b.api.rpc(ctx, "account/login/start", map[string]string{"type": "chatgpt"}, &result); err != nil {
+		if err := api.rpc(ctx, "account/login/start", map[string]string{"type": "chatgpt"}, &result); err != nil {
 			return err
 		}
 		writeJSON(w, 200, result)
@@ -232,13 +263,13 @@ func (b *bridge) serve(w http.ResponseWriter, r *http.Request) error {
 		}
 		return nil
 	case r.Method == "GET" && path == "/v1/models":
-		ms, err := b.api.models(ctx)
+		ms, err := api.models(ctx)
 		if err != nil {
 			return err
 		}
 		data := []any{map[string]string{"id": "subscription-default", "object": "model", "owned_by": "local-bridge"}}
 		for _, m := range ms {
-			data = append(data, map[string]string{"id": m.name(), "object": "model", "owned_by": "openai"})
+			data = append(data, map[string]string{"id": m.name(), "object": "model", "owned_by": map[string]string{"chatgpt": "openai", "gemini": "google"}[provider]})
 		}
 		writeJSON(w, 200, map[string]any{"object": "list", "data": data})
 		return nil
@@ -261,10 +292,17 @@ func (b *bridge) chat(w http.ResponseWriter, r *http.Request) error {
 		return problem(429, "bridge_busy", "One generation at a time. Retry after completion.")
 	}
 	defer b.release()
+	api, provider := b.current()
 	b.mu.Lock()
 	b.metrics.Requests++
 	s := b.settings
+	capture := b.debug && provider == "chatgpt"
 	b.mu.Unlock()
+	if capture {
+		if err := b.writeAudit(raw, req, s); err != nil {
+			return problem(500, "audit_failed", "디버그 audit 저장 실패. 저장 경로와 권한을 확인하세요.")
+		}
+	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	id := "chatcmpl-" + randomKey()
@@ -310,7 +348,7 @@ func (b *bridge) chat(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	filter := stopFilter{Stops: req.Stop}
-	result, err := b.api.generate(ctx, req, s, b.cwd, func(v string) {
+	result, err := api.generate(ctx, req, s, b.cwd, func(v string) {
 		push(filter.Push(v, false))
 		if filter.Stopped {
 			cancel()

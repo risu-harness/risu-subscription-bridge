@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-var version = "0.2.2"
+var version = "0.2.3"
 
 func randomKey() string {
 	b := make([]byte, 24)
@@ -45,6 +45,7 @@ func main() {
 	}
 }
 func run() error {
+	debug := flag.Bool("debug", false, "ChatGPT 요청 전문을 audit-latest.json에 저장 (최신 1건)")
 	restart := flag.Bool("restart", false, "기존 브리지 종료 후 같은 포트로 재시작")
 	showVersion := flag.Bool("version", false, "버전 표시")
 	flag.Parse()
@@ -179,18 +180,28 @@ func run() error {
 			codexBin = "/Applications/ChatGPT.app/Contents/Resources/codex"
 		}
 	}
-	api, err := startCodex(codexBin, cwd, env)
-	if err != nil {
-		return fmt.Errorf("Codex 시작 실패: %w", err)
-	}
+	api := &lazyCodex{binary: codexBin, cwd: cwd, env: env}
 	defer api.shutdown()
-	b := &bridge{api: api, token: token, port: strconv.Itoa(port), runtime: data, cwd: cwd, settings: settings{Model: "subscription-default"}, origins: []string{"https://risuai.xyz", "https://risuai.net", "tauri://localhost", "http://tauri.localhost"}}
-	if s, e := os.ReadFile(filepath.Join(data, "generation-settings.json")); e == nil {
-		if err = json.Unmarshal(s, &b.settings); err != nil {
-			return err
+	geminiBin := os.Getenv("BRIDGE_GEMINI_BIN")
+	if geminiBin == "" {
+		geminiBin = filepath.Join(filepath.Dir(data), "gemini-cli/bin/gemini")
+	}
+	geminiAPI := newGemini(geminiBin, filepath.Join(data, "gemini"))
+	if os.Getenv("BRIDGE_GEMINI_BIN") == "" {
+		geminiAPI.fallbackBinary = "gemini"
+	}
+	defer geminiAPI.shutdown()
+	b := &bridge{debug: *debug, api: api, providers: map[string]backend{"chatgpt": api, "gemini": geminiAPI}, token: token, port: strconv.Itoa(port), runtime: data, cwd: cwd, settings: settings{Model: "subscription-default"}, origins: []string{"https://risuai.xyz", "https://risuai.net", "tauri://localhost", "http://tauri.localhost"}}
+	provider := "chatgpt"
+	if saved, e := os.ReadFile(filepath.Join(data, "provider.json")); e == nil {
+		if json.Unmarshal(saved, &provider) != nil {
+			return errors.New("저장된 AI 연결 설정을 읽을 수 없습니다.")
 		}
 	} else if !os.IsNotExist(e) {
 		return e
+	}
+	if err = b.selectProvider(provider); err != nil {
+		return err
 	}
 	if origins := os.Getenv("BRIDGE_ALLOWED_ORIGINS"); origins != "" {
 		b.origins = nil
@@ -218,14 +229,11 @@ func run() error {
 			return nil
 		}
 		return err
-	case <-api.done:
-		_ = server.Close()
-		return errors.New("Codex가 종료되었습니다. 브리지를 다시 실행하세요.")
 	}
 }
 func openSetup(port int, token string) {
 	url := fmt.Sprintf("http://127.0.0.1:%d/#key=%s", port, token)
-	fmt.Printf("Risu Bridge %s · Go · App Server\n설정 페이지: %s\n이 링크에는 로컬 연결 키가 포함되어 있습니다. 터미널을 열어 두세요.\n", version, url)
+	fmt.Printf("Risu Bridge %s · ChatGPT / Gemini\n설정 페이지: %s\n이 링크에는 로컬 연결 키가 포함되어 있습니다. 터미널을 열어 두세요.\n", version, url)
 	if runtime.GOOS == "darwin" && os.Getenv("BRIDGE_OPEN_BROWSER") != "0" {
 		cmd := exec.Command("/usr/bin/open", url)
 		if cmd.Start() == nil {

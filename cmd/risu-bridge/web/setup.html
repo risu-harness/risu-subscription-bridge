@@ -12,11 +12,13 @@
 </head>
 <body>
 <main>
-<header><span class="brand">RISU SUBSCRIPTION BRIDGE</span><h1>익숙한 Risu에, 내 AI 구독을.</h1><p>ChatGPT 계정을 연결하고 Risu에서 사용할 응답을 설정하세요.</p></header>
+<header><span class="brand">RISU SUBSCRIPTION BRIDGE</span><h1>익숙한 Risu에, 내 AI 구독을.</h1><p>ChatGPT 또는 Gemini를 연결하고 Risu에서 사용할 응답을 설정하세요.</p></header>
 <section class="card" aria-labelledby="account-title">
-<div class="heading"><span class="step">01</span><h2 id="account-title">ChatGPT 계정 연결</h2></div>
+<div class="heading"><span class="step">01</span><h2 id="account-title">AI 계정 연결</h2></div>
+<label for="provider">사용할 AI</label><select id="provider"><option value="chatgpt">ChatGPT · Codex</option><option value="gemini">Gemini · Google 로그인</option></select>
 <p id="status" class="status" role="status" aria-live="polite">연결 상태를 확인하고 있습니다…</p>
-<p class="hint">브리지 전용 로그인입니다. 기존 Codex 로그인과 별도로 연결하세요.</p>
+<p class="hint" id="account-hint">브리지 전용 로그인입니다. 기존 Codex 로그인과 별도로 연결하세요.</p>
+<p class="note hint" id="gemini-note" hidden>Gemini CLI가 필요합니다. 최초 설치는 프로젝트의 <code>sh scripts/install-gemini.sh</code>를 실행하세요. Google 로그인 버튼을 누르면 기본 브라우저가 열립니다. 대화는 역할을 표시한 텍스트 기록으로 전달되며, 역할별 메시지 주입과는 차이가 있습니다.</p>
 <div class="actions"><button id="login" class="primary">ChatGPT 로그인</button><button id="refresh">상태 새로고침</button></div>
 <p><a id="auth" hidden target="_blank" rel="noopener noreferrer">공식 로그인 페이지 열기 ↗</a></p>
 <p id="error" role="alert"></p>
