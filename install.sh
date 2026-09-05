@@ -10,7 +10,7 @@ set -o pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly __release='v0.2.1'
+readonly __release='v0.2.2'
 __codex_version=''
 __stage=''
 __launcher=''
