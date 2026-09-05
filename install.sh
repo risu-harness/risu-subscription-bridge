@@ -12,7 +12,7 @@ esac
 release=v0.2.0
 install_dir=${BRIDGE_INSTALL_DIR:-"$HOME/.local/share/risu-subscription-bridge"}
 case "$install_dir" in /*) ;; *) fail 'BRIDGE_INSTALL_DIR은 절대 경로여야 합니다.' ;; esac
-mkdir -p "$install_dir/releases" "$install_dir/bin" "$install_dir/data"
+mkdir -p "$install_dir/releases" "$install_dir/bin" "$install_dir/data/codex"
 stage=$(mktemp -d "$install_dir/releases/go.XXXXXX")
 success=0
 trap 'if [ "$success" = 0 ]; then rm -rf "$stage"; fi' EXIT
